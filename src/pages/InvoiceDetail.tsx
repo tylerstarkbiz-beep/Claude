@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Ban, Copy, DollarSign, Plus, Printer, Send, Trash2 } from 'lucide-react';
 import { api, del, patch, post, useApi } from '../api';
 import { useApp } from '../store';
+import { DEMO } from '../env';
 import { money, shortDate, todayISO } from '../format';
 import { Button, Modal, Pill } from '../components/ui';
 import { InvoiceDocument } from '../components/InvoiceDocument';
@@ -21,7 +22,7 @@ export function InvoiceDetailPage() {
   if (!inv || !company) return <div className="text-slate-400">Loading…</div>;
   const editable = inv.status === 'draft' || inv.status === 'sent';
   const badge = invoiceBadge(inv);
-  const clientLink = `${location.origin}/pay/${inv.publicToken}`;
+  const clientLink = DEMO ? `(demo) /pay/${inv.publicToken}` : `${location.origin}/pay/${inv.publicToken}`;
 
   const run = async (p: Promise<InvoiceDetail & { automations?: string[] }>, msg?: string) => {
     try {
@@ -68,11 +69,16 @@ export function InvoiceDetailPage() {
               <DollarSign size={16} /> Record payment
             </Button>
           )}
-          <Button variant="secondary" onClick={() => window.print()}>
+          {!DEMO && (<Button variant="secondary" onClick={() => window.print()}>
             <Printer size={16} /> Print / PDF
-          </Button>
+          </Button>)}
           {inv.status !== 'draft' && inv.status !== 'void' && (
-            <Button variant="secondary" onClick={() => navigator.clipboard.writeText(clientLink).then(() => app.toast('Client link copied'))}>
+            <Button variant="secondary" onClick={() =>
+                navigator.clipboard
+                  .writeText(clientLink)
+                  .then(() => app.toast('Client link copied'))
+                  .catch(() => app.toast(`Client link: ${clientLink}`))
+              }>
               <Copy size={16} /> Client link
             </Button>
           )}

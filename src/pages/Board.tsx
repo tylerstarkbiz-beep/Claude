@@ -24,6 +24,7 @@ export function BoardPage() {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [openTask, setOpenTask] = useState<number | null>(null);
+  const [addingGroup, setAddingGroup] = useState(false);
 
   const jobById = useMemo(() => new Map(jobs?.map((j) => [j.id, j])), [jobs]);
 
@@ -53,10 +54,10 @@ export function BoardPage() {
     reload();
   }
 
-  async function addGroup() {
-    const name = prompt('Group name');
-    if (!name) return;
-    await post(`/boards/${board!.id}/groups`, { name, color: GROUP_COLORS[board!.groups.length % GROUP_COLORS.length] });
+  async function addGroup(name: string) {
+    setAddingGroup(false);
+    if (!name.trim()) return;
+    await post(`/boards/${board!.id}/groups`, { name: name.trim(), color: GROUP_COLORS[board!.groups.length % GROUP_COLORS.length] });
     reload();
   }
 
@@ -126,9 +127,22 @@ export function BoardPage() {
             </button>
           ))}
         </div>
-        <Button variant="secondary" onClick={addGroup}>
-          <Plus size={15} /> New group
-        </Button>
+        {addingGroup ? (
+          <input
+            autoFocus
+            className="input w-48"
+            placeholder="Group name, then Enter"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') addGroup(e.currentTarget.value);
+              if (e.key === 'Escape') setAddingGroup(false);
+            }}
+            onBlur={(e) => addGroup(e.target.value)}
+          />
+        ) : (
+          <Button variant="secondary" onClick={() => setAddingGroup(true)}>
+            <Plus size={15} /> New group
+          </Button>
+        )}
       </div>
 
       {view === 'table' ? (

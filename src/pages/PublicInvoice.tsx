@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { Printer } from 'lucide-react';
 import { useApi } from '../api';
+import { DEMO } from '../env';
 import { Button } from '../components/ui';
 import { InvoiceDocument } from '../components/InvoiceDocument';
 import type { CompanySettings, InvoiceDetail } from '../../shared/types';
@@ -16,9 +17,9 @@ export function PublicInvoicePage() {
   return (
     <div className="mx-auto max-w-3xl p-4 sm:p-8">
       <div className="no-print mb-4 flex justify-end">
-        <Button variant="secondary" onClick={() => window.print()}>
+        {!DEMO && (<Button variant="secondary" onClick={() => window.print()}>
           <Printer size={16} /> Print / save PDF
-        </Button>
+        </Button>)}
       </div>
       <InvoiceDocument invoice={data.invoice} company={data.company} />
       {data.invoice.balance > 0 && data.invoice.status !== 'void' && (

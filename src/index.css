@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* Scan the app source explicitly so the demo build (rooted in demo/) gets every class too. */
+@source "./";
 
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -23,3 +25,13 @@ body { color: #1e293b; }
   .no-print { display: none !important; }
   @page { margin: 12mm; }
 }
+
+body { background: #f8fafc; }
+
+.demo-banner {
+  position: fixed; left: 12px; bottom: 12px; z-index: 60; max-width: 216px;
+  padding: 6px 12px; border-radius: 10px; font-size: 12px; line-height: 1.35;
+  background: #1e293b; color: #fff; opacity: .9; pointer-events: none;
+}
+/* Only where the sidebar leaves room for it. */
+@media (max-width: 1023px) { .demo-banner { display: none; } }

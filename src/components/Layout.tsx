@@ -42,10 +42,11 @@ export function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const boards = app.boards.filter((b) => !app.divisionId || b.divisionId === app.divisionId || b.divisionId === null);
 
-  async function newBoard() {
-    const name = prompt('Board name');
-    if (!name) return;
-    const board = await post<Board>('/boards', { name, divisionId: app.divisionId });
+  const [addingBoard, setAddingBoard] = useState(false);
+  async function newBoard(name: string) {
+    setAddingBoard(false);
+    if (!name.trim()) return;
+    const board = await post<Board>('/boards', { name: name.trim(), divisionId: app.divisionId });
     await app.reload();
     navigate(`/boards/${board.id}`);
   }
@@ -78,10 +79,22 @@ export function Layout() {
 
       <div className="mt-5 flex items-center justify-between px-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
         Boards
-        <button onClick={newBoard} className="rounded p-0.5 hover:bg-slate-200 hover:text-slate-600" title="New board">
+        <button onClick={() => setAddingBoard(true)} className="rounded p-0.5 hover:bg-slate-200 hover:text-slate-600" title="New board" aria-label="New board">
           <Plus size={14} />
         </button>
       </div>
+      {addingBoard && (
+        <input
+          autoFocus
+          className="input my-1 py-1.5"
+          placeholder="Board name, then Enter"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') newBoard(e.currentTarget.value);
+            if (e.key === 'Escape') setAddingBoard(false);
+          }}
+          onBlur={(e) => newBoard(e.target.value)}
+        />
+      )}
       {boards.map((b) => {
         const div = app.division(b.divisionId);
         return (

@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, MemoryRouter, Route, Routes } from 'react-router-dom';
+import { DEMO } from './env';
 import './index.css';
 import { AppProvider } from './store';
 import { Layout } from './components/Layout';
@@ -24,10 +25,13 @@ import { TechHome } from './tech/TechHome';
 import { TechDay } from './tech/TechDay';
 import { TechJob } from './tech/TechJob';
 
+// The demo runs inside a sandboxed frame where the URL can't carry routes.
+const Router = DEMO ? MemoryRouter : BrowserRouter;
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AppProvider>
-      <BrowserRouter>
+      <Router>
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<Dashboard />} />
@@ -54,12 +58,12 @@ createRoot(document.getElementById('root')!).render(
           </Route>
           <Route path="pay/:token" element={<PublicInvoicePage />} />
         </Routes>
-      </BrowserRouter>
+      </Router>
     </AppProvider>
   </StrictMode>,
 );
 
 // Offline shell + "Add to Home Screen" support for the tech app.
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+if ('serviceWorker' in navigator && import.meta.env.PROD && !DEMO) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
