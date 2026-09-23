@@ -279,7 +279,7 @@ function AutomationForm({ rule, onClose, onSaved }: { rule: Automation | null; o
                 >
                   <option value="">Nobody</option>
                   <option value="job_assignee">The job's assigned tech</option>
-                  {app.users.map((u) => (
+                  {app.activeUsers.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.name}
                     </option>

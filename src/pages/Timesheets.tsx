@@ -4,10 +4,10 @@ import clsx from 'clsx';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useApi } from '../api';
 import { useApp } from '../store';
-import { addDays, hm, localDate, todayISO } from '../format';
+import { addDays, hm, localDate, money, todayISO } from '../format';
 import { Avatar, Button, PageHeader } from '../components/ui';
 
-type Sheet = { from: string; to: string; users: { userId: number; days: Record<string, number>; totalMinutes: number; jobMinutes: number }[] };
+type Sheet = { from: string; to: string; users: { userId: number; days: Record<string, number>; totalMinutes: number; jobMinutes: number; laborCost: number }[] };
 
 function monday(d = new Date()) {
   const s = new Date(d);
@@ -22,7 +22,11 @@ export function Timesheets() {
   const { data } = useApi<Sheet>(`/timesheets?from=${from}&days=7`);
   const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
   const today = todayISO();
-  const people = app.users.filter((u) => !app.divisionId || u.divisionIds.includes(app.divisionId));
+  const money$ = app.can('view_financials');
+  // Active members, plus anyone inactive who still has hours this week.
+  const people = app.users.filter(
+    (u) => (!app.divisionId || u.divisionIds.includes(app.divisionId)) && (u.active || data?.users.find((s) => s.userId === u.id)?.totalMinutes),
+  );
   const rows = people.map((u) => ({ user: u, sheet: data?.users.find((s) => s.userId === u.id) }));
   const dayTotal = (d: string) => rows.reduce((a, r) => a + (r.sheet?.days[d] ?? 0), 0);
   const grand = rows.reduce((a, r) => a + (r.sheet?.totalMinutes ?? 0), 0);
@@ -58,6 +62,7 @@ export function Timesheets() {
               ))}
               <th className="px-3 py-3 text-right">Total</th>
               <th className="px-3 py-3 text-right">On jobs</th>
+              {money$ && <th className="px-4 py-3 text-right">Labor cost</th>}
             </tr>
           </thead>
           <tbody>
@@ -88,6 +93,11 @@ export function Timesheets() {
                 <td className="px-3 py-2 text-right text-slate-500">
                   {sheet?.totalMinutes ? `${Math.round((sheet.jobMinutes / sheet.totalMinutes) * 100)}%` : '—'}
                 </td>
+                {money$ && (
+                  <td className="px-4 py-2 text-right tabular-nums" title={user.hourlyRate ? `${money(user.hourlyRate)}/hr now` : 'No hourly cost set'}>
+                    {sheet?.laborCost ? money(sheet.laborCost) : '—'}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -101,6 +111,7 @@ export function Timesheets() {
               ))}
               <td className="px-3 py-3 text-right">{hm(grand)}</td>
               <td />
+              {money$ && <td className="px-4 py-3 text-right">{money(rows.reduce((a, r) => a + (r.sheet?.laborCost ?? 0), 0))}</td>}
             </tr>
           </tfoot>
         </table>

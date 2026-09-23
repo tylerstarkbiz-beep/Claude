@@ -31,9 +31,13 @@ export const mapUser = (r: Row): User => ({
   id: r.id,
   name: r.name,
   email: r.email,
+  phone: r.phone ?? null,
   role: r.role,
   color: r.color,
   divisionIds: JSON.parse(r.division_ids),
+  hourlyRate: r.hourly_rate ?? 0,
+  permissions: JSON.parse(r.permissions ?? '[]'),
+  active: r.active == null ? true : !!r.active,
 });
 
 export const mapClient = (r: Row): Client => ({
@@ -61,6 +65,7 @@ export const mapJob = (r: Row): Job => ({
   assigneeId: r.assignee_id,
   customFields: JSON.parse(r.custom_fields),
   total: r.total ?? 0,
+  completedAt: r.completed_at ?? null,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });

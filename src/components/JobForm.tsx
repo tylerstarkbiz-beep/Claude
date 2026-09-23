@@ -24,7 +24,7 @@ export function JobForm({ onClose, clientId, divisionId }: { onClose: () => void
   const [saving, setSaving] = useState(false);
 
   const division = app.division(form.divisionId);
-  const techs = app.users.filter((u) => !division || u.divisionIds.includes(division.id));
+  const techs = app.activeUsers.filter((u) => !division || u.divisionIds.includes(division.id));
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   async function submit(e: React.FormEvent) {

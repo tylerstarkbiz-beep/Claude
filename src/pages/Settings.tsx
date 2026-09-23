@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { api, del, patch, post, useApi } from '../api';
 import { useApp } from '../store';
-import { Avatar, Button, PageHeader } from '../components/ui';
+import { Button, PageHeader } from '../components/ui';
 import type { ChecklistTemplate, CompanySettings, Division, FieldDef, FieldType, User } from '../../shared/types';
 
 const FIELD_TYPES: FieldType[] = ['text', 'number', 'select', 'date', 'textarea'];
@@ -11,7 +12,7 @@ export function SettingsPage() {
   const app = useApp();
   return (
     <div className="mx-auto max-w-4xl">
-      <PageHeader title="Settings" subtitle="Company info, divisions, daily checklists and team" />
+      <PageHeader title="Settings" subtitle="Company info, daily checklists and divisions" />
       <CompanyEditor />
       <ChecklistTemplates />
       <h2 className="mb-3 font-semibold">Divisions</h2>
@@ -20,7 +21,14 @@ export function SettingsPage() {
           <DivisionEditor key={d.id} division={d} />
         ))}
       </div>
-      <Team />
+      <h2 className="mb-2 font-semibold">Team</h2>
+      <p className="mb-10 text-sm text-slate-500">
+        Team members, hourly costs and permissions are managed on the{' '}
+        <Link to="/team" className="text-indigo-600 hover:underline">
+          Team page
+        </Link>
+        .
+      </p>
     </div>
   );
 }
@@ -110,76 +118,6 @@ const slug = (s: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+(.)?/g, (_, c: string | undefined) => (c ? c.toUpperCase() : ''))
     .replace(/^[^a-z]+/, '');
-
-function Team() {
-  const app = useApp();
-  const [form, setForm] = useState({ name: '', email: '', role: 'technician' as User['role'], divisionIds: [] as number[] });
-
-  async function add(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      const colors = ['#579bfc', '#00c875', '#fdab3d', '#e2445c', '#a25ddc', '#0086c0', '#ff7575'];
-      await post('/users', { ...form, color: colors[app.users.length % colors.length] });
-      setForm({ name: '', email: '', role: 'technician', divisionIds: [] });
-      app.reload();
-    } catch (err) {
-      app.toast((err as Error).message, 'error');
-    }
-  }
-
-  return (
-    <>
-      <h2 className="mb-3 font-semibold">Team</h2>
-      <div className="card mb-4 divide-y divide-slate-100">
-        {app.users.map((u) => (
-          <div key={u.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-            <Avatar user={u} />
-            <div className="min-w-0 flex-1">
-              <div className="font-medium">{u.name}</div>
-              <div className="text-xs text-slate-500">{u.email}</div>
-            </div>
-            <span className="text-xs capitalize text-slate-500">{u.role}</span>
-            <div className="flex gap-1">
-              {u.divisionIds.map((id) => {
-                const d = app.division(id);
-                return d && <span key={id} className="h-2.5 w-2.5 rounded-full" style={{ background: d.color }} title={d.name} />;
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-      <form onSubmit={add} className="card grid gap-3 p-4 sm:grid-cols-2">
-        <input className="input" required placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        <input className="input" required type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-        <select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as User['role'] })}>
-          <option value="technician">Technician</option>
-          <option value="manager">Manager</option>
-          <option value="office">Office</option>
-          <option value="owner">Owner</option>
-        </select>
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          {app.divisions.map((d) => (
-            <label key={d.id} className="flex items-center gap-1">
-              <input
-                type="checkbox"
-                checked={form.divisionIds.includes(d.id)}
-                onChange={(e) =>
-                  setForm({ ...form, divisionIds: e.target.checked ? [...form.divisionIds, d.id] : form.divisionIds.filter((x) => x !== d.id) })
-                }
-              />
-              {d.name}
-            </label>
-          ))}
-        </div>
-        <div className="sm:col-span-2">
-          <Button>
-            <Plus size={15} /> Add team member
-          </Button>
-        </div>
-      </form>
-    </>
-  );
-}
 
 function CompanyEditor() {
   const app = useApp();

@@ -12,6 +12,7 @@ export async function setup() {
   seed(db);
   const uploadDir = mkdtempSync(join(tmpdir(), 'fieldboard-test-'));
   const server = createApp(db, { uploadDir }).listen(0);
+  server.unref(); // a failed assertion that skips close() must not hang the test run
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await fetch(origin + '/api' + path, {

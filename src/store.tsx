@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api } from './api';
-import type { Board, Division, User } from '../shared/types';
+import { userCan, type Board, type Division, type Permission, type User } from '../shared/types';
 
 interface Toast {
   id: number;
@@ -10,7 +10,12 @@ interface Toast {
 
 interface AppState {
   divisions: Division[];
+  /** Everyone, including inactive members (for names on history). */
   users: User[];
+  /** Active members, for pickers and schedules. */
+  activeUsers: User[];
+  /** Whether the person using the app has a permission. */
+  can: (perm: Permission) => boolean;
   boards: Board[];
   reload: () => Promise<void>;
   /** Global division filter; null means "All divisions". */
@@ -61,7 +66,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUsers(data.users);
     setBoards(data.boards);
     setLoaded(true);
-    setCurrentUserIdState((cur) => (cur && data.users.some((u) => u.id === cur) ? cur : (data.users[0]?.id ?? null)));
+    setCurrentUserIdState((cur) => (cur && data.users.some((u) => u.id === cur && u.active) ? cur : (data.users.find((u) => u.active)?.id ?? null)));
     setDivisionIdState((cur) => (cur && data.divisions.some((d) => d.id === cur) ? cur : null));
   }, []);
 
@@ -79,6 +84,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       divisions,
       users,
+      activeUsers: users.filter((u) => u.active),
+      can: (perm) => userCan(users.find((u) => u.id === currentUserId), perm),
       boards,
       reload,
       divisionId,

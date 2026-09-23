@@ -1,20 +1,25 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
-import { AlertTriangle, CalendarClock, DollarSign, ListTodo, Wrench } from 'lucide-react';
+import { AlertTriangle, CalendarClock, ChevronRight, DollarSign, ListTodo, Wrench } from 'lucide-react';
 import { useApi } from '../api';
 import { useApp } from '../store';
 import { dateTime, hm, minutesSince, money, relative, shortDate, todayISO } from '../format';
 import { Avatar, DivisionBadge, PageHeader, Pill, StatusBattery, divisionIcon } from '../components/ui';
-import { JOB_STATUS_META, type DashboardStats, type Job } from '../../shared/types';
+import { DrillDown } from '../components/DrillDown';
+import { JOB_STATUS_META, type DashboardListKind, type DashboardStats, type Job } from '../../shared/types';
 
 export function Dashboard() {
   const app = useApp();
   const { data } = useApi<DashboardStats>(`/dashboard${app.divisionId ? `?divisionId=${app.divisionId}` : ''}`);
   const { data: allJobs } = useApi<Job[]>('/jobs');
+  const [drill, setDrill] = useState<{ kind: DashboardListKind; divisionId: number | null } | null>(null);
   if (!data) return <div className="text-slate-400">Loading…</div>;
 
-  const sum = (k: keyof DashboardStats['divisions'][number]) => data.divisions.reduce((a, d) => a + (d[k] as number), 0);
+  const t = data.totals;
   const me = app.user(app.currentUserId);
+  const money$ = app.can('view_financials');
+  const open = (kind: DashboardListKind, divisionId = app.divisionId) => setDrill({ kind, divisionId });
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -23,11 +28,13 @@ export function Dashboard() {
         subtitle={app.divisionId ? `${app.division(app.divisionId)?.name} overview` : 'Company-wide overview across every division'}
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Kpi icon={Wrench} label="Open jobs" value={sum('openJobs')} />
-        <Kpi icon={CalendarClock} label="On the schedule today" value={sum('scheduledToday')} />
-        <Kpi icon={DollarSign} label="Revenue this month" value={money(sum('revenueMonth'))} sub={`${money(sum('outstanding'))} invoiced & unpaid`} />
-        <Kpi icon={ListTodo} label="Open tasks" value={sum('openTasks')} sub={`${sum('overdueTasks')} overdue`} alert={sum('overdueTasks') > 0} />
+      <div className={clsx('mb-6 grid grid-cols-2 gap-4', money$ ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
+        <Kpi icon={Wrench} label="Open jobs" value={t.openJobs} onClick={() => open('open_jobs')} />
+        <Kpi icon={CalendarClock} label="On the schedule today" value={t.scheduledToday} onClick={() => open('today')} />
+        {money$ && (
+          <Kpi icon={DollarSign} label="Revenue this month" value={money(t.revenueMonth)} sub={`${money(t.outstanding)} invoiced & unpaid`} onClick={() => open('revenue')} />
+        )}
+        <Kpi icon={ListTodo} label="Open tasks" value={t.openTasks} sub={`${t.overdueTasks} overdue`} alert={t.overdueTasks > 0} onClick={() => open('open_tasks')} />
       </div>
 
       {!app.divisionId && (
@@ -35,25 +42,35 @@ export function Dashboard() {
           {data.divisions.map((d) => {
             const div = app.division(d.divisionId)!;
             const Icon = divisionIcon(div.icon);
+            const Row = ({ label, kind, children, className }: { label: string; kind: DashboardListKind; children: React.ReactNode; className?: string }) => (
+              <button onClick={() => open(kind, div.id)} className="-mx-2 flex items-center justify-between rounded px-2 py-1 text-sm hover:bg-slate-50">
+                <span className="text-slate-500">{label}</span>
+                <span className={clsx('font-medium tabular-nums', className)}>{children}</span>
+              </button>
+            );
             return (
-              <button key={d.divisionId} onClick={() => app.setDivisionId(div.id)} className="card border-t-4 p-4 text-left transition hover:shadow-md" style={{ borderTopColor: div.color }}>
-                <div className="mb-3 flex items-center gap-2 font-semibold" style={{ color: div.color }}>
+              <div key={d.divisionId} className="card border-t-4 p-4" style={{ borderTopColor: div.color }}>
+                <button onClick={() => app.setDivisionId(div.id)} className="mb-2 flex items-center gap-2 font-semibold hover:underline" style={{ color: div.color }} title={`Switch to ${div.name}`}>
                   <Icon size={18} /> {div.name}
-                </div>
-                <dl className="grid grid-cols-2 gap-y-2 text-sm">
-                  <dt className="text-slate-500">Open jobs</dt>
-                  <dd className="text-right font-medium">{d.openJobs}</dd>
-                  <dt className="text-slate-500">Today</dt>
-                  <dd className="text-right font-medium">{d.scheduledToday}</dd>
-                  <dt className="text-slate-500">Revenue (mo)</dt>
-                  <dd className="text-right font-medium">{money(d.revenueMonth)}</dd>
-                  <dt className="text-slate-500">Open tasks</dt>
-                  <dd className={clsx('text-right font-medium', d.overdueTasks > 0 && 'text-rose-600')}>
+                </button>
+                <div className="flex flex-col">
+                  <Row label="Open jobs" kind="open_jobs">
+                    {d.openJobs}
+                  </Row>
+                  <Row label="Today" kind="today">
+                    {d.scheduledToday}
+                  </Row>
+                  {money$ && (
+                    <Row label="Revenue (mo)" kind="revenue">
+                      {money(d.revenueMonth)}
+                    </Row>
+                  )}
+                  <Row label="Open tasks" kind="open_tasks" className={d.overdueTasks > 0 ? 'text-rose-600' : undefined}>
                     {d.openTasks}
                     {d.overdueTasks > 0 && ` (${d.overdueTasks} late)`}
-                  </dd>
-                </dl>
-              </button>
+                  </Row>
+                </div>
+              </div>
             );
           })}
         </div>
@@ -157,18 +174,34 @@ export function Dashboard() {
           </div>
         </section>
       </div>
+      {drill && <DrillDown kind={drill.kind} divisionId={drill.divisionId} onClose={() => setDrill(null)} />}
     </div>
   );
 }
 
-function Kpi({ icon: Icon, label, value, sub, alert }: { icon: typeof Wrench; label: string; value: React.ReactNode; sub?: string; alert?: boolean }) {
+function Kpi({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  alert,
+  onClick,
+}: {
+  icon: typeof Wrench;
+  label: string;
+  value: React.ReactNode;
+  sub?: string;
+  alert?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className="card p-4">
+    <button onClick={onClick} className="card group p-4 text-left transition hover:border-indigo-300 hover:shadow-md">
       <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
         <Icon size={16} /> {label}
+        <ChevronRight size={16} className="ml-auto text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-indigo-500" />
       </div>
-      <div className="text-2xl font-bold">{value}</div>
+      <div className="text-2xl font-bold tabular-nums">{value}</div>
       {sub && <div className={clsx('mt-1 text-xs', alert ? 'text-rose-600' : 'text-slate-500')}>{sub}</div>}
-    </div>
+    </button>
   );
 }

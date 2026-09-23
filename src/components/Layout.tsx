@@ -9,6 +9,8 @@ import {
   NotebookPen,
   Receipt,
   Smartphone,
+  TrendingUp,
+  UserCog,
   LayoutDashboard,
   LayoutGrid,
   Menu,
@@ -21,19 +23,21 @@ import {
 import { useApp } from '../store';
 import { post } from '../api';
 import { Avatar, divisionIcon } from './ui';
-import type { Board } from '../../shared/types';
+import type { Board, Permission } from '../../shared/types';
 
-const NAV = [
+const NAV: { to: string; label: string; icon: typeof Wrench; end?: boolean; perm?: Permission }[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/my-work', label: 'My Work', icon: CircleUserRound },
   { to: '/jobs', label: 'Jobs', icon: Wrench },
   { to: '/schedule', label: 'Schedule', icon: CalendarDays },
   { to: '/daily', label: 'Daily Logs', icon: NotebookPen },
   { to: '/timesheets', label: 'Timesheets', icon: Clock },
-  { to: '/invoices', label: 'Invoices', icon: Receipt },
+  { to: '/invoices', label: 'Invoices', icon: Receipt, perm: 'view_financials' },
+  { to: '/profitability', label: 'Profitability', icon: TrendingUp, perm: 'view_financials' },
   { to: '/clients', label: 'Clients', icon: Users },
-  { to: '/automations', label: 'Automations', icon: Zap },
-  { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/team', label: 'Team', icon: UserCog, perm: 'manage_team' },
+  { to: '/automations', label: 'Automations', icon: Zap, perm: 'manage_settings' },
+  { to: '/settings', label: 'Settings', icon: Settings, perm: 'manage_settings' },
 ];
 
 export function Layout() {
@@ -59,7 +63,7 @@ export function Layout() {
         </div>
         <span className="text-lg font-bold tracking-tight">FieldBoard</span>
       </div>
-      {NAV.map(({ to, label, icon: Icon, end }) => (
+      {NAV.filter((n) => !n.perm || app.can(n.perm)).map(({ to, label, icon: Icon, end }) => (
         <NavLink
           key={to}
           to={to}
@@ -156,7 +160,7 @@ export function Layout() {
               onChange={(e) => app.setCurrentUserId(Number(e.target.value))}
               title="Viewing as"
             >
-              {app.users.map((u) => (
+              {app.activeUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name}
                 </option>

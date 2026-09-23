@@ -225,13 +225,44 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS job_costs (
+  id INTEGER PRIMARY KEY,
+  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  category TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  amount REAL NOT NULL,
+  date TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS job_costs_job ON job_costs(job_id);
 `;
+
+// Columns added after a table first shipped. CREATE TABLE IF NOT EXISTS won't add them to an
+// existing database, so they're applied here when missing.
+const ADDED_COLUMNS: [table: string, column: string, definition: string][] = [
+  ['users', 'phone', 'TEXT'],
+  ['users', 'hourly_rate', 'REAL NOT NULL DEFAULT 0'],
+  ['users', 'permissions', "TEXT NOT NULL DEFAULT '[]'"],
+  ['users', 'active', 'INTEGER NOT NULL DEFAULT 1'],
+  ['jobs', 'completed_at', 'TEXT'],
+  // Rate in effect when the time was worked, so later raises don't rewrite past job costs.
+  ['time_entries', 'hourly_rate', 'REAL'],
+];
+
+function migrate(db: DB) {
+  for (const [table, column, definition] of ADDED_COLUMNS) {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
 
 export function openDb(path: string): DB {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 

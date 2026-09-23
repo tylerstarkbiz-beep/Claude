@@ -3,7 +3,7 @@ import clsx from 'clsx';
 import { Briefcase, Droplets, Sparkles, Thermometer, Truck, X, type LucideIcon } from 'lucide-react';
 import { initials } from '../format';
 import { useApp } from '../store';
-import type { Division, FieldDef, User } from '../../shared/types';
+import { PERMISSION_META, type Division, type FieldDef, type Permission, type User } from '../../shared/types';
 
 const ICONS: Record<string, LucideIcon> = { droplets: Droplets, truck: Truck, sparkles: Sparkles, thermometer: Thermometer };
 export const divisionIcon = (icon: string) => ICONS[icon] ?? Briefcase;
@@ -154,7 +154,7 @@ export function PersonPicker({
   const app = useApp();
   const [open, setOpen] = useState(false);
   const ref = useOutside<HTMLDivElement>(open, () => setOpen(false));
-  const list = users ?? app.users;
+  const list = users ?? app.activeUsers;
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen((o) => !o)} className="flex items-center">
@@ -287,6 +287,20 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
         {subtitle && <div className="mt-1 text-sm text-slate-500">{subtitle}</div>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+/** Shows children only if the current person has the permission; otherwise explains who to ask. */
+export function RequirePerm({ perm, children }: { perm: Permission; children: ReactNode }) {
+  const app = useApp();
+  if (app.can(perm)) return <>{children}</>;
+  return (
+    <div className="mx-auto mt-16 max-w-md text-center">
+      <h1 className="text-lg font-semibold">You don't have access to this page</h1>
+      <p className="mt-2 text-sm text-slate-500">
+        It needs the <b>{PERMISSION_META[perm].label}</b> permission. An owner can turn it on for you under Team.
+      </p>
     </div>
   );
 }

@@ -6,8 +6,23 @@ export function provideSqlJs(mod: typeof SQL) {
   SQL = mod;
 }
 
-const norm = (params: unknown[]): SqlValue[] =>
-  params.map((p) => (p === undefined ? null : typeof p === 'boolean' ? (p ? 1 : 0) : (p as SqlValue)));
+const value = (p: unknown): SqlValue => (p === undefined ? null : typeof p === 'boolean' ? (p ? 1 : 0) : (p as SqlValue));
+
+/** Positional args, or node:sqlite-style named params ({ now: … } for `:now`). */
+function norm(params: unknown[]): SqlValue[] | Record<string, SqlValue> {
+  const [first] = params;
+  if (params.length === 1 && first && typeof first === 'object' && !Array.isArray(first) && !(first instanceof Uint8Array)) {
+    return Object.fromEntries(Object.entries(first).map(([k, v]) => [/^[:@$]/.test(k) ? k : `:${k}`, value(v)]));
+  }
+  return params.map(value);
+}
+
+/** Match node:sqlite, which throws on named parameters the statement doesn't use. */
+function checkNamed(sql: string, params: unknown[]) {
+  const [first] = params;
+  if (params.length !== 1 || !first || typeof first !== 'object' || Array.isArray(first)) return;
+  for (const k of Object.keys(first)) if (!sql.includes(`:${k.replace(/^[:@$]/, '')}`)) throw new TypeError(`Unknown named parameter '${k}'`);
+}
 
 export class DatabaseSync {
   private db: Database;
@@ -21,6 +36,7 @@ export class DatabaseSync {
   prepare(sql: string) {
     const db = this.db;
     const rows = (params: unknown[], limit = Infinity) => {
+      checkNamed(sql, params);
       const stmt = db.prepare(sql);
       try {
         stmt.bind(norm(params));
@@ -35,6 +51,7 @@ export class DatabaseSync {
       get: (...params: unknown[]) => rows(params, 1)[0],
       all: (...params: unknown[]) => rows(params),
       run: (...params: unknown[]) => {
+        checkNamed(sql, params);
         db.run(sql, norm(params));
         const changes = db.getRowsModified();
         const lastInsertRowid = db.exec('SELECT last_insert_rowid()')[0].values[0][0] as number;

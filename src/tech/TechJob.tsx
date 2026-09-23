@@ -134,7 +134,7 @@ export function TechJob() {
         <NotesFeed jobId={job.id} large />
       </section>
 
-      {job.lineItems.length > 0 && (
+      {job.lineItems.length > 0 && app.can('view_financials') && (
         <details className="card p-4">
           <summary className="cursor-pointer font-semibold">Line items · {money(job.total)}</summary>
           <div className="mt-2 space-y-1 text-sm">

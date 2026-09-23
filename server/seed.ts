@@ -2,7 +2,7 @@
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { openDb, tx, type DB } from './db.ts';
-import type { AutomationAction, AutomationTrigger, FieldDef } from '../shared/types.ts';
+import { ROLE_DEFAULTS, type AutomationAction, type AutomationTrigger, type FieldDef, type Role } from '../shared/types.ts';
 
 const DIVISIONS: { name: string; slug: string; prefix: string; color: string; icon: string; fields: FieldDef[] }[] = [
   {
@@ -63,15 +63,16 @@ const DIVISIONS: { name: string; slug: string; prefix: string; color: string; ic
 ];
 
 // [name, email, role, color, division slugs]
-const USERS: [string, string, string, string, string[]][] = [
-  ['Alex Morgan', 'alex@example.com', 'owner', '#401694', ['restoration', 'junk-removal', 'janitorial', 'hvac']],
-  ['Jordan Lee', 'jordan@example.com', 'office', '#a25ddc', ['restoration', 'junk-removal', 'janitorial', 'hvac']],
-  ['Marcus Reed', 'marcus@example.com', 'manager', '#e2445c', ['restoration']],
-  ['Dana Cruz', 'dana@example.com', 'technician', '#ff7575', ['restoration']],
-  ['Tony Ruiz', 'tony@example.com', 'technician', '#fdab3d', ['junk-removal']],
-  ['Sam Patel', 'sam@example.com', 'manager', '#00c875', ['janitorial']],
-  ['Kim Nguyen', 'kim@example.com', 'technician', '#579bfc', ['hvac']],
-  ['Chris Walker', 'chris@example.com', 'technician', '#0086c0', ['hvac']],
+// [name, email, role, color, division slugs, loaded hourly cost]
+const USERS: [string, string, Role, string, string[], number][] = [
+  ['Alex Morgan', 'alex@example.com', 'owner', '#401694', ['restoration', 'junk-removal', 'janitorial', 'hvac'], 45],
+  ['Jordan Lee', 'jordan@example.com', 'office', '#a25ddc', ['restoration', 'junk-removal', 'janitorial', 'hvac'], 26],
+  ['Marcus Reed', 'marcus@example.com', 'manager', '#e2445c', ['restoration'], 38],
+  ['Dana Cruz', 'dana@example.com', 'technician', '#ff7575', ['restoration'], 29],
+  ['Tony Ruiz', 'tony@example.com', 'technician', '#fdab3d', ['junk-removal'], 25],
+  ['Sam Patel', 'sam@example.com', 'manager', '#00c875', ['janitorial'], 31],
+  ['Kim Nguyen', 'kim@example.com', 'technician', '#579bfc', ['hvac'], 36],
+  ['Chris Walker', 'chris@example.com', 'technician', '#0086c0', ['hvac'], 34],
 ];
 
 const CLIENTS: [string, string | null, string, string, string][] = [
@@ -333,12 +334,12 @@ export function seed(db: DB) {
     }
 
     const userIds: Record<string, number> = {};
-    for (const [name, email, role, color, divs] of USERS) {
+    USERS.forEach(([name, email, role, color, divs, rate], i) => {
       const r = db
-        .prepare('INSERT INTO users (name, email, role, color, division_ids) VALUES (?, ?, ?, ?, ?)')
-        .run(name, email, role, color, JSON.stringify(divs.map((s) => divisionIds[s])));
+        .prepare('INSERT INTO users (name, email, phone, role, color, division_ids, hourly_rate, permissions) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(name, email, `(555) 310-${String(1001 + i * 7).slice(-4)}`, role, color, JSON.stringify(divs.map((s) => divisionIds[s])), rate, JSON.stringify(ROLE_DEFAULTS[role]));
       userIds[name] = Number(r.lastInsertRowid);
-    }
+    });
 
     const clientIds = CLIENTS.map(([name, company, email, phone, address]) =>
       Number(
@@ -373,6 +374,9 @@ export function seed(db: DB) {
         );
       const jobId = Number(r.lastInsertRowid);
       jobIds[j.title] = jobId;
+      if (['completed', 'invoiced', 'paid'].includes(j.status)) {
+        db.prepare('UPDATE jobs SET completed_at = ? WHERE id = ?').run(j.start ? day(offset, hour + hours) : day(-1, 17), jobId);
+      }
       for (const [desc, qty, price] of j.items) {
         db.prepare('INSERT INTO line_items (job_id, description, quantity, unit_price) VALUES (?, ?, ?, ?)').run(jobId, desc, qty, price);
       }
@@ -509,14 +513,16 @@ function seedFieldData(db: DB, ids: { userIds: Record<string, number>; jobIds: R
   }
 
   // Time entries: a shop block, then job time, for the crew over the last four days.
-  const insertTime = db.prepare('INSERT INTO time_entries (user_id, job_id, started_at, ended_at, notes) VALUES (?, ?, ?, ?, ?)');
+  const rates = Object.fromEntries(USERS.map(([name, , , , , rate]) => [userIds[name], rate]));
+  const timeStmt = db.prepare('INSERT INTO time_entries (user_id, job_id, started_at, ended_at, notes, hourly_rate) VALUES (?, ?, ?, ?, ?, ?)');
+  const insertTime = { run: (u: number, job: number | null, start: string, end: string | null, notes: string | null) => timeStmt.run(u, job, start, end, notes, rates[u]) };
   const crew: [string, string[]][] = [
     ['Marcus Reed', ['Water mitigation — burst supply line', 'Unit 4B mold remediation']],
     ['Dana Cruz', ['Water mitigation — burst supply line', 'Storm damage — roof leak into bedroom']],
-    ['Tony Ruiz', ['Water-damaged carpet & drywall haul-off', 'Estate cleanout — whole house']],
+    ['Tony Ruiz', ['Estate cleanout — whole house', 'Garage cleanout']],
     ['Sam Patel', ['Nightly clinic cleaning', 'Dental office deep clean']],
-    ['Kim Nguyen', ['No heat — sanctuary RTU', 'Mini-split tune-up']],
-    ['Chris Walker', ['AC not cooling', 'Quarterly PM — 6 rooftop units']],
+    ['Kim Nguyen', ['No heat — sanctuary RTU', 'Heat pump replacement']],
+    ['Chris Walker', ['Quarterly PM — 6 rooftop units', 'AC not cooling']],
   ];
   for (const [name, jobs] of crew) {
     for (let offset = -4; offset <= -1; offset++) {
@@ -527,6 +533,11 @@ function seedFieldData(db: DB, ids: { userIds: Record<string, number>; jobIds: R
       insertTime.run(u, null, at(offset, 15, 55), at(offset, 16, 30), 'Drive back / unload');
     }
   }
+  // Single-visit jobs finished earlier.
+  insertTime.run(userIds['Tony Ruiz'], jobIds['Water-damaged carpet & drywall haul-off'], at(-3, 13, 50), at(-3, 16, 5), null);
+  insertTime.run(userIds['Tony Ruiz'], jobIds['Couch & mattress pickup'], at(-9, 10, 50), at(-9, 11, 45), null);
+  insertTime.run(userIds['Kim Nguyen'], jobIds['Mini-split tune-up'], at(-12, 9, 45), at(-12, 12, 20), null);
+
   // Today: a few people are on the clock right now.
   const now = new Date();
   const ago = (mins: number) => {
@@ -585,6 +596,31 @@ function seedFieldData(db: DB, ids: { userIds: Record<string, number>; jobIds: R
   makeInvoice('Water-damaged carpet & drywall haul-off', 'sent', -3, -1);
   makeInvoice('Couch & mattress pickup', 'paid', -9, -9, [[149, 'Card', -9]]);
   makeInvoice('Mini-split tune-up', 'paid', -12, 18, [[357, 'Check', -5]]);
+
+  // Job costs beyond labor.
+  const costs: [string, string, string, number, number][] = [
+    ['Water mitigation — burst supply line', 'Materials', 'Antimicrobial, poly sheeting, tape', 185, -1],
+    ['Water mitigation — burst supply line', 'Dump / disposal fees', 'Wet drywall & pad disposal', 60, -1],
+    ['Storm damage — roof leak into bedroom', 'Materials', 'Tarp, 2x4s, cap nails', 140, -6],
+    ['Dental office deep clean', 'Materials', 'Floor stripper & finish (5 gal)', 210, -2],
+    ['Nightly clinic cleaning', 'Materials', 'Monthly chemicals, liners, paper', 420, -5],
+    ['No heat — sanctuary RTU', 'Materials', 'Hot surface igniter (Carrier OEM)', 95, -1],
+    ['AC not cooling', 'Materials', '35/5 MFD capacitor', 22, -1],
+    ['AC not cooling', 'Materials', 'R-410A, 2 lb', 60, -1],
+    ['Mini-split tune-up', 'Materials', 'Coil cleaner & filters', 38, -12],
+    ['Water-damaged carpet & drywall haul-off', 'Dump / disposal fees', 'Transfer station, 1,340 lb', 60, -3],
+    ['Couch & mattress pickup', 'Dump / disposal fees', 'Mattress recycling fee', 25, -9],
+  ];
+  for (const [job, category, description, amount, offset] of costs) {
+    db.prepare('INSERT INTO job_costs (job_id, category, description, amount, date, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(
+      jobIds[job],
+      category,
+      description,
+      amount,
+      date(offset),
+      userIds['Jordan Lee'],
+    );
+  }
 }
 
 export function seedIfEmpty(db: DB) {
@@ -596,6 +632,7 @@ export function seedIfEmpty(db: DB) {
 }
 
 const TABLES = [
+  'job_costs',
   'settings',
   'payments',
   'invoice_items',

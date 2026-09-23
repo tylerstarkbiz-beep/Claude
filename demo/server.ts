@@ -5,13 +5,15 @@ import { createApi } from '../server/api.ts';
 import { createNotesApi } from '../server/notes.ts';
 import { createTimeApi } from '../server/time.ts';
 import { createInvoicesApi } from '../server/invoices.ts';
+import { createTeamApi } from '../server/team.ts';
+import { createCostingApi } from '../server/costing.ts';
 import { uploads } from './shims/fs.ts';
 import type { DemoRouter, Route } from './shims/express.ts';
 
 export function startDemoServer() {
   const db = openDb(':memory:');
   seed(db);
-  const routers = [createNotesApi(db, '/uploads'), createTimeApi(db), createInvoicesApi(db), createApi(db)] as unknown as DemoRouter[];
+  const routers = [createNotesApi(db, '/uploads'), createTimeApi(db), createInvoicesApi(db), createTeamApi(db), createCostingApi(db), createApi(db)] as unknown as DemoRouter[];
   const routes: Route[] = routers.flatMap((r) => r.routes);
 
   function dispatch(method: string, url: string, body: unknown): Promise<{ status: number; data: unknown }> {

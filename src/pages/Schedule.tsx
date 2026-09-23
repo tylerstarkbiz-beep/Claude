@@ -34,7 +34,7 @@ export function Schedule() {
     (j) => !j.scheduledStart && !['paid', 'cancelled', 'completed', 'invoiced'].includes(j.status),
   );
 
-  const crew = app.users.filter((u) => !app.divisionId || u.divisionIds.includes(app.divisionId));
+  const crew = app.activeUsers.filter((u) => !app.divisionId || u.divisionIds.includes(app.divisionId));
   const rows = [...crew.map((u) => ({ id: u.id as number | null, user: u })), { id: null, user: undefined }];
   const today = todayISO();
 

@@ -20,7 +20,7 @@ export function InvoiceDetailPage() {
   const [newItem, setNewItem] = useState({ description: '', quantity: '1', unitPrice: '' });
 
   if (!inv || !company) return <div className="text-slate-400">Loading…</div>;
-  const editable = inv.status === 'draft' || inv.status === 'sent';
+  const editable = (inv.status === 'draft' || inv.status === 'sent') && app.can('manage_invoices');
   const badge = invoiceBadge(inv);
   const clientLink = DEMO ? `(demo) /pay/${inv.publicToken}` : `${location.origin}/pay/${inv.publicToken}`;
 
@@ -59,12 +59,12 @@ export function InvoiceDetailPage() {
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          {inv.status === 'draft' && (
+          {inv.status === 'draft' && app.can('manage_invoices') && (
             <Button onClick={() => run(post(`/invoices/${inv.id}/send`, {}), `${inv.number} marked as sent`)}>
               <Send size={16} /> Mark as sent
             </Button>
           )}
-          {inv.status === 'sent' && (
+          {inv.status === 'sent' && app.can('manage_invoices') && (
             <Button onClick={() => setPaying(true)}>
               <DollarSign size={16} /> Record payment
             </Button>
@@ -82,12 +82,12 @@ export function InvoiceDetailPage() {
               <Copy size={16} /> Client link
             </Button>
           )}
-          {inv.status === 'sent' && inv.amountPaid === 0 && (
+          {inv.status === 'sent' && inv.amountPaid === 0 && app.can('manage_invoices') && (
             <Button variant="danger" onClick={() => confirm(`Void ${inv.number}?`) && run(post(`/invoices/${inv.id}/void`, {}))}>
               <Ban size={16} /> Void
             </Button>
           )}
-          {inv.status === 'draft' && (
+          {inv.status === 'draft' && app.can('manage_invoices') && (
             <Button variant="danger" onClick={async () => confirm('Delete this draft?') && (await del(`/invoices/${inv.id}`), navigate('/invoices'))}>
               <Trash2 size={16} />
             </Button>

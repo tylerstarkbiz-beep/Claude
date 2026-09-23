@@ -1,7 +1,7 @@
 // Automation engine: "When <trigger> happens, do <action>".
 // Rules are evaluated synchronously after the change that fired them.
 import { logActivity, type DB } from './db.ts';
-import { createTask, getClient, getJob, localDate, mapAutomation } from './repo.ts';
+import { createTask, getClient, getJob, localDate, localDateTime, mapAutomation } from './repo.ts';
 import { JOB_STATUS_META, type Automation, type Job, type JobStatus, type Task, type TaskStatus } from '../shared/types.ts';
 
 export type AutomationEvent =
@@ -75,6 +75,7 @@ export function runAutomations(db: DB, event: AutomationEvent, depth = 0): strin
       ran.push(msg);
     } else if (action.type === 'set_job_status' && job && job.status !== action.status) {
       db.prepare("UPDATE jobs SET status = ?, updated_at = datetime('now') WHERE id = ?").run(action.status, job.id);
+      syncCompletedAt(db, job.id, action.status);
       const msg = `⚡ ${rule.name}: moved ${job.number} to ${action.status}`;
       logActivity(db, 'automation', msg, { jobId: job.id });
       ran.push(msg);
@@ -91,8 +92,18 @@ export function runAutomations(db: DB, event: AutomationEvent, depth = 0): strin
   return ran;
 }
 
+const DONE: JobStatus[] = ['completed', 'invoiced', 'paid'];
+
+/** Stamp when a job first reaches Completed (kept through Invoiced/Paid); clear it if the job is reopened. */
+export function syncCompletedAt(db: DB, jobId: number, status: JobStatus) {
+  if (DONE.includes(status)) db.prepare('UPDATE jobs SET completed_at = COALESCE(completed_at, ?) WHERE id = ?').run(localDateTime(), jobId);
+  else db.prepare('UPDATE jobs SET completed_at = NULL WHERE id = ?').run(jobId);
+}
+
 /** Log a job's status change and run matching automations. Call after the row is updated. */
 export function onJobStatusChanged(db: DB, before: Job, after: Job): string[] {
+  syncCompletedAt(db, after.id, after.status);
+  after = getJob(db, after.id)!;
   logActivity(db, 'job', `${after.number} moved from ${JOB_STATUS_META[before.status].label} to ${JOB_STATUS_META[after.status].label}`, {
     jobId: after.id,
   });

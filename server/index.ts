@@ -6,6 +6,8 @@ import { createApi } from './api.ts';
 import { createInvoicesApi } from './invoices.ts';
 import { createNotesApi } from './notes.ts';
 import { createTimeApi } from './time.ts';
+import { createTeamApi } from './team.ts';
+import { createCostingApi } from './costing.ts';
 import { HttpError } from './repo.ts';
 import { seedIfEmpty } from './seed.ts';
 
@@ -16,7 +18,7 @@ export function createApp(db: DB, opts: { uploadDir?: string } = {}) {
   const app = express();
   // Notes can carry several phone photos (resized client-side), so allow larger bodies.
   app.use(express.json({ limit: '40mb' }));
-  app.use('/api', createNotesApi(db, uploadDir), createTimeApi(db), createInvoicesApi(db), createApi(db));
+  app.use('/api', createNotesApi(db, uploadDir), createTimeApi(db), createInvoicesApi(db), createTeamApi(db), createCostingApi(db), createApi(db));
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
   app.use('/api', (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });

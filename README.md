@@ -12,7 +12,9 @@ FieldBoard puts both in one app and connects them with automations. It is built 
 | Area | What it does |
 | --- | --- |
 | **Divisions** | Every job, board, tech and KPI belongs to a division. The top bar switches between *All divisions* and each division. Every division has its own color, job-number prefix (`RST-`, `JNK-`, `JAN-`, `HVC-`) and **custom job fields** (Restoration: claim #, carrier, adjuster, loss type · HVAC: equipment, model/serial, maintenance plan · Junk: load size · Janitorial: frequency, sq ft, contract end). Edit them in Settings. |
-| **Dashboard** | Company-wide or per-division KPIs: open jobs, today's schedule, monthly revenue, unpaid invoices, open and overdue tasks. Also shows the pipeline, upcoming jobs and an activity feed. |
+| **Dashboard** | Company-wide or per-division numbers: open jobs, today's schedule, revenue this month (jobs *completed* this month), unpaid invoices, and open and overdue tasks. **Click any number** (the top tiles or a division card's rows) to see the jobs or tasks behind it; the revenue list includes each job's cost, profit and margin. Also shows who's on the clock, the pipeline, upcoming jobs and an activity feed. |
+| **Team** | Add and edit members, including role, divisions, phone, and **loaded hourly cost** (wage plus payroll taxes, workers' comp, benefits). **Permissions** are pre-filled from the role and adjustable per person: see financials, invoice & collect, manage jobs, approve time & logs, manage team, company settings. Members who leave are marked inactive, so their history stays. |
+| **Job costing** | Every job shows revenue (line items) against **labor**, which is tracked time × each person's hourly cost. The rate is saved on each time entry, so a raise doesn't rewrite past jobs. **Materials & other costs** are entered by category (materials, equipment rental, subcontractor, dump fees, permits, fuel). The result is profit and margin. **Profitability** reports by job and division for this month, last month, 90 days, the year or all time, optionally including jobs still in progress. |
 | **Jobs** | Drag-and-drop pipeline (Request → Quoted → Scheduled → In Progress → Completed → Invoiced → Paid) plus a list view. The job page covers the client, schedule, assigned tech, division fields, editable line items with totals, linked tasks and activity. |
 | **Schedule** | Weekly dispatch board with one row per tech, color-coded by division, plus a "needs scheduling" tray. |
 | **Clients** | One customer record shared by all divisions, with cross-division job history and lifetime revenue. |
@@ -49,6 +51,7 @@ Other scripts:
 npm test           # API + automation tests
 npm run typecheck
 npm run seed       # wipe the database and reload demo data
+npm run build:demo # one self-contained HTML file (app + sample data, runs in the browser) in dist-demo/
 ```
 
 The database lives at `data/fieldboard.db` (set `DB_PATH` to move it), and photos in `data/uploads` (`UPLOAD_DIR`). Delete the file to start fresh; demo data is
@@ -65,6 +68,8 @@ server/automations.ts  Automation rule engine
 server/time.ts         Clock in/out, timesheets, daily logs & checklists
 server/notes.ts        Job notes + photo uploads (stored in data/uploads)
 server/invoices.ts     Invoices, payments, client links, company settings
+server/team.ts         Team members, hourly rates, permissions
+server/costing.ts      Job costing and the profitability report
 server/seed.ts         Demo data
 server/*.test.ts       Tests
 src/                   React + Tailwind web app (Vite)
@@ -83,16 +88,15 @@ and it launches full-screen like a native app. Until logins exist, techs pick th
 This is a working MVP. Before running the business on it, these are the next things to build, roughly in priority
 order:
 
-1. **Authentication and roles.** Right now the name menus stand in for login. Techs should only see their own day, and
-   only managers should sign off reports. Photo and invoice links are currently unauthenticated.
+1. **Authentication.** Right now the "Viewing as" menu stands in for login. Permissions are applied in the screens,
+   but the server doesn't check who is asking until there are real logins. Photo and invoice links are also unauthenticated.
 2. **Hosting.** Run it on a server with HTTPS (needed for phone installs and camera access), backups, and Postgres plus
    cloud photo storage once multiple offices use it.
 3. **Sending invoices and taking payments.** Email/text the client link (SendGrid/Twilio) and pay by card/ACH via Stripe.
    Today you copy the link and record payments by hand.
 4. **Offline mode for techs.** Queue clock-ins, notes and photos with no signal and sync later. The app shell loads
    offline today, but data doesn't.
-5. **Payroll and job costing.** Overtime rules, timesheet approval, pay-rate × hours on each job for profit per job and
-   per division, and a QuickBooks export.
+5. **Payroll.** Overtime rules, timesheet approval, and a QuickBooks/payroll export. Also receipt photos on job costs.
 6. **Quotes and client notifications**: quote approval by the client, "on my way" texts, and appointment reminders.
 7. **Recurring jobs** for janitorial contracts and HVAC maintenance plans.
 8. **GPS**: location stamp on clock-in/out and photos.

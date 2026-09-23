@@ -19,7 +19,7 @@ export function TechShell() {
             onChange={(e) => app.setCurrentUserId(Number(e.target.value))}
             aria-label="Signed in as"
           >
-            {app.users.map((u) => (
+            {app.activeUsers.map((u) => (
               <option key={u.id} value={u.id} className="text-slate-900">
                 {u.name}
               </option>

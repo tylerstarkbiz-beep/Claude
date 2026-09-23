@@ -21,14 +21,52 @@ export interface Division {
   fields: FieldDef[];
 }
 
+export type Role = 'owner' | 'manager' | 'technician' | 'office';
+
 export interface User {
   id: number;
   name: string;
   email: string;
-  role: 'owner' | 'manager' | 'technician' | 'office';
+  phone: string | null;
+  role: Role;
   color: string;
   divisionIds: number[];
+  /** Loaded cost per hour (wage + payroll taxes, workers' comp, etc.). Drives job labor cost. */
+  hourlyRate: number;
+  permissions: Permission[];
+  /** Inactive members keep their history but drop out of pickers and schedules. */
+  active: boolean;
 }
+
+// ---------- Permissions ----------
+
+export const PERMISSIONS = [
+  'view_financials',
+  'manage_invoices',
+  'manage_jobs',
+  'approve_time',
+  'manage_team',
+  'manage_settings',
+] as const;
+export type Permission = (typeof PERMISSIONS)[number];
+
+export const PERMISSION_META: Record<Permission, { label: string; description: string }> = {
+  view_financials: { label: 'See financials', description: 'Prices, revenue, invoices, job costing and profitability' },
+  manage_invoices: { label: 'Invoice & collect', description: 'Create and send invoices, record payments' },
+  manage_jobs: { label: 'Manage jobs', description: 'Create, schedule, reassign and delete jobs and clients' },
+  approve_time: { label: 'Approve time & logs', description: "Sign off daily reports and edit others' time" },
+  manage_team: { label: 'Manage team', description: 'Add members, set hourly rates and permissions' },
+  manage_settings: { label: 'Company settings', description: 'Divisions, checklists, automations and company info' },
+};
+
+export const ROLE_DEFAULTS: Record<Role, Permission[]> = {
+  owner: [...PERMISSIONS],
+  manager: ['view_financials', 'manage_jobs', 'approve_time'],
+  office: ['view_financials', 'manage_invoices', 'manage_jobs'],
+  technician: [],
+};
+
+export const userCan = (user: User | undefined, perm: Permission) => !!user?.permissions.includes(perm);
 
 export interface Client {
   id: number;
@@ -86,6 +124,8 @@ export interface Job {
   assigneeId: number | null;
   customFields: Record<string, string>;
   total: number;
+  /** When the job first reached Completed; revenue is recognized in this month. */
+  completedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -209,7 +249,18 @@ export interface ActivityEntry {
   createdAt: string;
 }
 
+export interface DashboardTiles {
+  openJobs: number;
+  scheduledToday: number;
+  revenueMonth: number;
+  outstanding: number;
+  openTasks: number;
+  overdueTasks: number;
+}
+
 export interface DashboardStats {
+  /** Tile numbers for the current filter (includes boards not tied to a division). */
+  totals: DashboardTiles;
   divisions: {
     divisionId: number;
     openJobs: number;
@@ -398,3 +449,50 @@ export interface CompanySettings {
   defaultTaxRate: number;
   invoiceFooter: string;
 }
+
+// ---------- Job costing ----------
+
+export const COST_CATEGORIES = ['Materials', 'Equipment rental', 'Subcontractor', 'Dump / disposal fees', 'Permits', 'Fuel / travel', 'Other'] as const;
+
+export interface JobCost {
+  id: number;
+  jobId: number;
+  category: string;
+  description: string;
+  amount: number;
+  date: string;
+  createdBy: number | null;
+}
+
+export interface JobCosting {
+  revenue: number;
+  invoiced: number;
+  laborMinutes: number;
+  laborCost: number;
+  labor: { userId: number; minutes: number; cost: number; rate: number }[];
+  costs: JobCost[];
+  otherCosts: number;
+  totalCost: number;
+  profit: number;
+  /** Profit as a % of revenue; null when there is no revenue yet. */
+  margin: number | null;
+}
+
+/** One job's row in the profitability report. */
+export interface ProfitRow {
+  jobId: number;
+  number: string;
+  title: string;
+  clientId: number;
+  divisionId: number;
+  status: JobStatus;
+  completedAt: string | null;
+  revenue: number;
+  laborMinutes: number;
+  laborCost: number;
+  otherCosts: number;
+  profit: number;
+  margin: number | null;
+}
+
+export type DashboardListKind = 'open_jobs' | 'today' | 'revenue' | 'open_tasks';

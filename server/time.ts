@@ -171,8 +171,8 @@ export function createTimeApi(db: DB): Router {
         if (open && open.jobId === jobId) return { entry: open, automations: [] };
         if (open) db.prepare('UPDATE time_entries SET ended_at = ? WHERE id = ?').run(now, open.id);
         const r = db
-          .prepare('INSERT INTO time_entries (user_id, job_id, started_at, notes) VALUES (?, ?, ?, ?)')
-          .run(user.id, jobId, now, req.body.notes || null);
+          .prepare('INSERT INTO time_entries (user_id, job_id, started_at, notes, hourly_rate) VALUES (?, ?, ?, ?, ?)')
+          .run(user.id, jobId, now, req.body.notes || null, user.hourlyRate);
         let automations: string[] = [];
         if (job) {
           logActivity(db, 'time', `${user.name} started work on ${job.number}`, { jobId: job.id });
@@ -221,9 +221,10 @@ export function createTimeApi(db: DB): Router {
       const b = req.body;
       const startedAt = required(b, 'startedAt');
       if (b.endedAt && b.endedAt <= startedAt) throw new HttpError(400, 'End must be after start');
+      const user = getUser(db, Number(b.userId));
       const r = db
-        .prepare('INSERT INTO time_entries (user_id, job_id, started_at, ended_at, notes) VALUES (?, ?, ?, ?, ?)')
-        .run(getUser(db, Number(b.userId)).id, optNum(b.jobId), startedAt, b.endedAt || null, b.notes || null);
+        .prepare('INSERT INTO time_entries (user_id, job_id, started_at, ended_at, notes, hourly_rate) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(user.id, optNum(b.jobId), startedAt, b.endedAt || null, b.notes || null, user.hourlyRate);
       return mapEntry(db.prepare(`${TIME_SELECT} WHERE te.id = ?`).get(r.lastInsertRowid)!);
     }),
   );
@@ -267,6 +268,17 @@ export function createTimeApi(db: DB): Router {
         .all(from, to)
         .map(mapEntry);
       const users = db.prepare('SELECT id FROM users ORDER BY name').all() as { id: number }[];
+      const costs = new Map(
+        (
+          db
+            .prepare(
+              `SELECT te.user_id, SUM((julianday(COALESCE(te.ended_at, :now)) - julianday(te.started_at)) * 24 * COALESCE(te.hourly_rate, u.hourly_rate, 0)) AS cost
+               FROM time_entries te JOIN users u ON u.id = te.user_id
+               WHERE substr(te.started_at, 1, 10) BETWEEN :from AND :to GROUP BY te.user_id`,
+            )
+            .all({ now: localDateTime(), from, to }) as { user_id: number; cost: number }[]
+        ).map((r) => [r.user_id, Math.round(r.cost * 100) / 100]),
+      );
       const now = new Date();
       return {
         from,
@@ -280,7 +292,7 @@ export function createTimeApi(db: DB): Router {
             byDay[e.startedAt.slice(0, 10)] = (byDay[e.startedAt.slice(0, 10)] ?? 0) + m;
             if (e.jobId) jobMinutes += m;
           }
-          return { userId: u.id, days: byDay, totalMinutes: Object.values(byDay).reduce((a, b) => a + b, 0), jobMinutes };
+          return { userId: u.id, days: byDay, totalMinutes: Object.values(byDay).reduce((a, b) => a + b, 0), jobMinutes, laborCost: costs.get(u.id) ?? 0 };
         }),
       };
     }),

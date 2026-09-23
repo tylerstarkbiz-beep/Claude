@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { assertOneOf, h, id, optNum, patch, required } from './http.ts';
 import { logActivity, tx, type DB } from './db.ts';
-import { onJobStatusChanged, runAutomations } from './automations.ts';
+import { onJobStatusChanged, runAutomations, syncCompletedAt } from './automations.ts';
+import { profitRows } from './costing.ts';
 import {
   HttpError,
   JOB_SELECT,
@@ -57,22 +58,6 @@ export function createApi(db: DB): Router {
         fields: (v) => ['fields', JSON.stringify(v ?? [])],
       });
       return mapDivision(db.prepare('SELECT * FROM divisions WHERE id = ?').get(id(req))!);
-    }),
-  );
-
-  api.post(
-    '/users',
-    h((req) => {
-      const r = db
-        .prepare('INSERT INTO users (name, email, role, color, division_ids) VALUES (?, ?, ?, ?, ?)')
-        .run(
-          required(req.body, 'name'),
-          required(req.body, 'email'),
-          assertOneOf(req.body.role ?? 'technician', ['owner', 'manager', 'technician', 'office'], 'role'),
-          req.body.color ?? '#64748b',
-          JSON.stringify(req.body.divisionIds ?? []),
-        );
-      return mapUser(db.prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid)!);
     }),
   );
 
@@ -211,6 +196,7 @@ export function createApi(db: DB): Router {
             Number(li.unitPrice) || 0,
           );
         }
+        syncCompletedAt(db, jobId, status);
         const job = getJob(db, jobId)!;
         logActivity(db, 'job', `Created job ${job.number}: ${job.title}`, { jobId });
         const automations = runAutomations(db, { type: 'job_created', job });
@@ -546,45 +532,53 @@ export function createApi(db: DB): Router {
   );
 
   // ---------- Dashboard ----------
+  // Each dashboard tile and its click-through list share one WHERE clause, so the count always matches the list.
+  const TILE_WHERE: Record<'open_jobs' | 'today' | 'revenue' | 'open_tasks' | 'overdue_tasks', string> = {
+    open_jobs: "j.status NOT IN ('completed', 'invoiced', 'paid', 'cancelled')",
+    today: "substr(j.scheduled_start, 1, 10) = :today AND j.status != 'cancelled'",
+    revenue: "substr(j.completed_at, 1, 10) BETWEEN :monthStart AND :today AND j.status != 'cancelled'",
+    open_tasks: "t.status != 'done' AND t.parent_id IS NULL",
+    overdue_tasks: "t.status != 'done' AND t.parent_id IS NULL AND t.due_date < :today",
+  };
+  const scope = (divisionId: number | null) => {
+    const today = localDate();
+    return {
+      params: { today, monthStart: today.slice(0, 8) + '01', ...(divisionId ? { division: divisionId } : {}) } as Record<string, any>,
+      jobDiv: divisionId ? ' AND j.division_id = :division' : '',
+      taskDiv: divisionId ? ' AND t.board_id IN (SELECT id FROM boards WHERE division_id = :division)' : '',
+    };
+  };
+  /** node:sqlite rejects named parameters a statement doesn't use, so pass only the ones in `sql`. */
+  const bind = (sql: string, params: Record<string, any>) => Object.fromEntries(Object.entries(params).filter(([k]) => sql.includes(`:${k}`)));
+  const JOB_TOTAL = 'COALESCE((SELECT SUM(quantity * unit_price) FROM line_items li WHERE li.job_id = j.id), 0)';
+
+  function tiles(divisionId: number | null) {
+    const { params, jobDiv, taskDiv } = scope(divisionId);
+    const n = (sql: string) => ((db.prepare(sql).get(bind(sql, params)) as { n: number | null }).n ?? 0);
+    return {
+      openJobs: n(`SELECT COUNT(*) AS n FROM jobs j WHERE ${TILE_WHERE.open_jobs}${jobDiv}`),
+      scheduledToday: n(`SELECT COUNT(*) AS n FROM jobs j WHERE ${TILE_WHERE.today}${jobDiv}`),
+      revenueMonth: Math.round(n(`SELECT SUM(${JOB_TOTAL}) AS n FROM jobs j WHERE ${TILE_WHERE.revenue}${jobDiv}`) * 100) / 100,
+      outstanding:
+        Math.round(
+          n(
+            `SELECT SUM(COALESCE((SELECT SUM(quantity * unit_price) FROM invoice_items it WHERE it.invoice_id = i.id), 0) * (1 + i.tax_rate / 100.0)
+               - COALESCE((SELECT SUM(amount) FROM payments p WHERE p.invoice_id = i.id), 0)) AS n
+             FROM invoices i WHERE i.status = 'sent'${divisionId ? ' AND i.division_id = :division' : ''}`,
+          ) * 100,
+        ) / 100,
+      openTasks: n(`SELECT COUNT(*) AS n FROM tasks t WHERE ${TILE_WHERE.open_tasks}${taskDiv}`),
+      overdueTasks: n(`SELECT COUNT(*) AS n FROM tasks t WHERE ${TILE_WHERE.overdue_tasks}${taskDiv}`),
+    };
+  }
+
   api.get(
     '/dashboard',
     h((req): DashboardStats => {
       const divisionId = optNum(req.query.divisionId);
       const today = localDate();
-      const monthStart = today.slice(0, 8) + '01';
       const divisions = db.prepare('SELECT id FROM divisions ORDER BY id').all() as { id: number }[];
-
-      const perDivision = divisions
-        .filter((d) => !divisionId || d.id === divisionId)
-        .map((d) => {
-          const one = (sql: string, ...p: any[]) => (db.prepare(sql).get(...p) as { n: number }).n ?? 0;
-          const total = `COALESCE((SELECT SUM(quantity * unit_price) FROM line_items li WHERE li.job_id = j.id), 0)`;
-          return {
-            divisionId: d.id,
-            openJobs: one(`SELECT COUNT(*) AS n FROM jobs WHERE division_id = ? AND status NOT IN ('completed','invoiced','paid','cancelled')`, d.id),
-            scheduledToday: one(`SELECT COUNT(*) AS n FROM jobs WHERE division_id = ? AND substr(scheduled_start, 1, 10) = ?`, d.id, today),
-            revenueMonth: one(
-              `SELECT SUM(${total}) AS n FROM jobs j WHERE division_id = ? AND status IN ('completed','invoiced','paid') AND updated_at >= ?`,
-              d.id,
-              monthStart,
-            ),
-            outstanding: one(
-              `SELECT SUM(COALESCE((SELECT SUM(quantity * unit_price) FROM invoice_items it WHERE it.invoice_id = i.id), 0) * (1 + i.tax_rate / 100.0)
-                 - COALESCE((SELECT SUM(amount) FROM payments p WHERE p.invoice_id = i.id), 0)) AS n
-               FROM invoices i WHERE i.division_id = ? AND i.status = 'sent'`,
-              d.id,
-            ),
-            openTasks: one(
-              `SELECT COUNT(*) AS n FROM tasks WHERE status != 'done' AND board_id IN (SELECT id FROM boards WHERE division_id = ?)`,
-              d.id,
-            ),
-            overdueTasks: one(
-              `SELECT COUNT(*) AS n FROM tasks WHERE status != 'done' AND due_date < ? AND board_id IN (SELECT id FROM boards WHERE division_id = ?)`,
-              today,
-              d.id,
-            ),
-          };
-        });
+      const perDivision = divisions.filter((d) => !divisionId || d.id === divisionId).map((d) => ({ divisionId: d.id, ...tiles(d.id) }));
 
       const divFilter = divisionId ? 'AND j.division_id = ?' : '';
       const divParams = divisionId ? [divisionId] : [];
@@ -602,7 +596,7 @@ export function createApi(db: DB): Router {
 
       const taskDivFilter = divisionId ? 'AND t.board_id IN (SELECT id FROM boards WHERE division_id = ?)' : '';
       const overdueTasks = db
-        .prepare(`${TASK_SELECT} WHERE t.status != 'done' AND t.due_date < ? ${taskDivFilter} ORDER BY t.due_date LIMIT 10`)
+        .prepare(`${TASK_SELECT} WHERE ${TILE_WHERE.overdue_tasks.replace(':today', '?')} ${taskDivFilter} ORDER BY t.due_date LIMIT 10`)
         .all(today, ...divParams)
         .map(mapTask);
 
@@ -619,7 +613,28 @@ export function createApi(db: DB): Router {
         }[]
       ).map((r) => ({ userId: r.user_id, jobId: r.job_id, startedAt: r.started_at }));
 
-      return { divisions: perDivision, jobsByStatus, upcomingJobs, overdueTasks, recentActivity, onTheClock };
+      return { totals: tiles(divisionId), divisions: perDivision, jobsByStatus, upcomingJobs, overdueTasks, recentActivity, onTheClock };
+    }),
+  );
+
+  /** The records behind a dashboard tile. */
+  api.get(
+    '/dashboard/list/:kind',
+    h((req) => {
+      const kind = assertOneOf(req.params.kind, ['open_jobs', 'today', 'revenue', 'open_tasks'] as const, 'list');
+      const { params, jobDiv, taskDiv } = scope(optNum(req.query.divisionId));
+      if (kind === 'open_tasks') {
+        const sql = `${TASK_SELECT} WHERE ${TILE_WHERE.open_tasks}${taskDiv} ORDER BY t.due_date IS NULL, t.due_date, t.id`;
+        return db.prepare(sql).all(bind(sql, params)).map(mapTask);
+      }
+      if (kind === 'revenue') {
+        const sql = `SELECT j.id FROM jobs j WHERE ${TILE_WHERE.revenue}${jobDiv}`;
+        const ids = (db.prepare(sql).all(bind(sql, params)) as { id: number }[]).map((r) => r.id);
+        return profitRows(db, { jobIds: ids });
+      }
+      const order = kind === 'today' ? 'j.scheduled_start' : "j.scheduled_start IS NULL, j.scheduled_start, j.created_at";
+      const sql = `${JOB_SELECT} WHERE ${TILE_WHERE[kind]}${jobDiv} ORDER BY ${order}`;
+      return db.prepare(sql).all(bind(sql, params)).map(mapJob);
     }),
   );
 

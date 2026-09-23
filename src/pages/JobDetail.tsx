@@ -8,6 +8,7 @@ import { hm, money, relative, shortDate, todayISO } from '../format';
 import { Avatar, Button, CustomFieldInput, DivisionBadge, Pill, StatusCell } from '../components/ui';
 import { TaskDrawer, statusOptions } from '../components/TaskDrawer';
 import { NotesFeed } from '../components/NotesFeed';
+import { JobCostingCard } from '../components/JobCostingCard';
 import { invoiceBadge } from './Invoices';
 import { JOB_STATUSES, JOB_STATUS_META, type Invoice, type InvoiceDetail, type Job, type JobDetail, type LineItem, type Task, type TimeEntry } from '../../shared/types';
 
@@ -24,7 +25,8 @@ export function JobDetailPage() {
 
   if (!job) return <div className="text-slate-400">Loading job…</div>;
   const division = app.division(job.divisionId);
-  const techs = app.users.filter((u) => u.divisionIds.includes(job.divisionId));
+  const techs = app.activeUsers.filter((u) => u.divisionIds.includes(job.divisionId));
+  const money$ = app.can('view_financials');
 
   async function save(changes: Partial<Job>) {
     setData((j) => j && { ...j, ...changes });
@@ -68,9 +70,11 @@ export function JobDetailPage() {
           <div className="h-9 w-36 overflow-visible rounded-md">
             <StatusCell value={job.status} options={jobStatusOptions} onChange={(status) => save({ status })} className="rounded-md" />
           </div>
-          <Button variant="danger" onClick={remove} title="Delete job">
-            <Trash2 size={16} />
-          </Button>
+          {app.can('manage_jobs') && (
+            <Button variant="danger" onClick={remove} title="Delete job">
+              <Trash2 size={16} />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -167,7 +171,8 @@ export function JobDetailPage() {
             </section>
           )}
 
-          <LineItems job={job} onChange={reload} />
+          {money$ && <LineItems job={job} onChange={reload} />}
+          {money$ && <JobCostingCard jobId={job.id} refreshKey={job.total} />}
 
           <section className="card p-5">
             <h2 className="mb-4 font-semibold">Notes & photos</h2>
@@ -176,8 +181,8 @@ export function JobDetailPage() {
         </div>
 
         <div className="space-y-6">
-          <JobInvoices job={job} />
-          <JobTime jobId={job.id} />
+          {money$ && <JobInvoices job={job} />}
+          {!money$ && <JobTime jobId={job.id} />}
           <JobTasks job={job} onOpen={setOpenTask} onChange={reload} />
 
           <section className="card p-5">
@@ -361,9 +366,11 @@ function JobInvoices({ job }: { job: Detail }) {
     <section className="card p-5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-semibold">Invoicing</h2>
-        <Button variant={open.length ? 'secondary' : 'primary'} onClick={create}>
-          <Receipt size={15} /> Create invoice
-        </Button>
+        {app.can('manage_invoices') && (
+          <Button variant={open.length ? 'secondary' : 'primary'} onClick={create}>
+            <Receipt size={15} /> Create invoice
+          </Button>
+        )}
       </div>
       {invoices?.map((i) => {
         const b = invoiceBadge(i);

@@ -43,8 +43,6 @@ function DateNav({ date, onChange }: { date: string; onChange: (d: string) => vo
   );
 }
 
-const canReview = (u?: User) => u?.role === 'owner' || u?.role === 'manager';
-
 /** Team overview: one card per employee for the chosen day. */
 export function DailyLogs() {
   const app = useApp();
@@ -52,7 +50,7 @@ export function DailyLogs() {
   const [params, setParams] = useSearchParams();
   const date = params.get('date') ?? todayISO();
   const { data } = useApi<DailySummary[]>(`/daily?date=${date}`);
-  const people = app.users.filter((u) => !app.divisionId || u.divisionIds.includes(app.divisionId));
+  const people = app.activeUsers.filter((u) => !app.divisionId || u.divisionIds.includes(app.divisionId));
   const rows = people.map((u) => ({ user: u, s: data?.find((d) => d.userId === u.id) }));
   const submitted = rows.filter((r) => r.s?.submitted).length;
   const needsReview = rows.filter((r) => r.s?.submitted && !r.s.reviewed).length;
@@ -385,7 +383,7 @@ export function ReportCard({ log, user, onChange, large }: { log: DailyLog; user
         {field('tomorrow', 'Plan for tomorrow', 'First stop, what to bring…')}
       </div>
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        {canReview(me) && me?.id !== user?.id && log.report.submittedAt && (
+        {app.can('approve_time') && me?.id !== user?.id && log.report.submittedAt && (
           <Button variant="secondary" onClick={() => review(!!log.report.reviewedAt)}>
             <ShieldCheck size={16} /> {log.report.reviewedAt ? 'Undo sign-off' : 'Sign off'}
           </Button>

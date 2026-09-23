@@ -23,6 +23,7 @@ export function Jobs() {
   const { data: clients } = useApi<Client[]>('/clients');
   const clientName = useMemo(() => new Map(clients?.map((c) => [c.id, c.name])), [clients]);
   const [dragOver, setDragOver] = useState<JobStatus | null>(null);
+  const money$ = app.can('view_financials');
 
   const list = (jobs ?? []).filter((j) => !status || j.status === status);
 
@@ -43,9 +44,11 @@ export function Jobs() {
         title="Jobs"
         subtitle={`${list.length} jobs${app.divisionId ? ` in ${app.division(app.divisionId)?.name}` : ' across all divisions'}`}
         actions={
-          <Button onClick={() => setCreating(true)}>
-            <Plus size={16} /> New job
-          </Button>
+          app.can('manage_jobs') && (
+            <Button onClick={() => setCreating(true)}>
+              <Plus size={16} /> New job
+            </Button>
+          )
         }
       />
 
@@ -103,7 +106,7 @@ export function Jobs() {
               >
                 <div className="mb-2 flex items-center justify-between px-1">
                   <Pill label={`${JOB_STATUS_META[s].label} · ${col.length}`} color={JOB_STATUS_META[s].color} />
-                  <span className="text-xs text-slate-500">{money(total)}</span>
+                  {money$ && <span className="text-xs text-slate-500">{money(total)}</span>}
                 </div>
                 <div className="space-y-2">
                   {col.map((j) => (
@@ -117,7 +120,7 @@ export function Jobs() {
                     >
                       <div className="mb-1 flex items-center justify-between text-xs text-slate-400">
                         <span className="font-mono">{j.number}</span>
-                        <span className="font-medium text-slate-600">{money(j.total)}</span>
+                        {money$ && <span className="font-medium text-slate-600">{money(j.total)}</span>}
                       </div>
                       <div className="text-sm font-medium leading-snug">{j.title}</div>
                       <div className="mt-1 text-xs text-slate-500">{clientName.get(j.clientId)}</div>
@@ -145,7 +148,7 @@ export function Jobs() {
                 <th className="px-4 py-3">Scheduled</th>
                 <th className="px-4 py-3">Tech</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Total</th>
+                {money$ && <th className="px-4 py-3 text-right">Total</th>}
               </tr>
             </thead>
             <tbody>
@@ -168,7 +171,7 @@ export function Jobs() {
                   <td className="px-4 py-3">
                     <Pill label={JOB_STATUS_META[j.status].label} color={JOB_STATUS_META[j.status].color} />
                   </td>
-                  <td className="px-4 py-3 text-right font-medium">{money(j.total)}</td>
+                  {money$ && <td className="px-4 py-3 text-right font-medium">{money(j.total)}</td>}
                 </tr>
               ))}
             </tbody>

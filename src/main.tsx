@@ -15,6 +15,9 @@ import { ClientDetailPage } from './pages/ClientDetail';
 import { BoardPage } from './pages/Board';
 import { Automations } from './pages/Automations';
 import { SettingsPage } from './pages/Settings';
+import { Team } from './pages/Team';
+import { Profitability } from './pages/Profitability';
+import { RequirePerm } from './components/ui';
 import { DailyLogDetail, DailyLogs } from './pages/DailyLogs';
 import { Timesheets } from './pages/Timesheets';
 import { Invoices } from './pages/Invoices';
@@ -42,13 +45,15 @@ createRoot(document.getElementById('root')!).render(
             <Route path="clients" element={<Clients />} />
             <Route path="clients/:id" element={<ClientDetailPage />} />
             <Route path="boards/:id" element={<BoardPage />} />
-            <Route path="automations" element={<Automations />} />
+            <Route path="automations" element={<RequirePerm perm="manage_settings"><Automations /></RequirePerm>} />
             <Route path="daily" element={<DailyLogs />} />
             <Route path="daily/:userId/:date" element={<DailyLogDetail />} />
             <Route path="timesheets" element={<Timesheets />} />
-            <Route path="invoices" element={<Invoices />} />
-            <Route path="invoices/:id" element={<InvoiceDetailPage />} />
-            <Route path="settings" element={<SettingsPage />} />
+            <Route path="invoices" element={<RequirePerm perm="view_financials"><Invoices /></RequirePerm>} />
+            <Route path="invoices/:id" element={<RequirePerm perm="view_financials"><InvoiceDetailPage /></RequirePerm>} />
+            <Route path="profitability" element={<RequirePerm perm="view_financials"><Profitability /></RequirePerm>} />
+            <Route path="team" element={<RequirePerm perm="manage_team"><Team /></RequirePerm>} />
+            <Route path="settings" element={<RequirePerm perm="manage_settings"><SettingsPage /></RequirePerm>} />
             <Route path="*" element={<div className="text-slate-500">Page not found.</div>} />
           </Route>
           <Route path="tech" element={<TechShell />}>
