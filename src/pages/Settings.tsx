@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { patch, post } from '../api';
+import { api, del, patch, post, useApi } from '../api';
 import { useApp } from '../store';
 import { Avatar, Button, PageHeader } from '../components/ui';
-import type { Division, FieldDef, FieldType, User } from '../../shared/types';
+import type { ChecklistTemplate, CompanySettings, Division, FieldDef, FieldType, User } from '../../shared/types';
 
 const FIELD_TYPES: FieldType[] = ['text', 'number', 'select', 'date', 'textarea'];
 
@@ -11,7 +11,9 @@ export function SettingsPage() {
   const app = useApp();
   return (
     <div className="mx-auto max-w-4xl">
-      <PageHeader title="Settings" subtitle="Divisions, custom job fields and team members" />
+      <PageHeader title="Settings" subtitle="Company info, divisions, daily checklists and team" />
+      <CompanyEditor />
+      <ChecklistTemplates />
       <h2 className="mb-3 font-semibold">Divisions</h2>
       <div className="mb-10 space-y-4">
         {app.divisions.map((d) => (
@@ -174,6 +176,119 @@ function Team() {
             <Plus size={15} /> Add team member
           </Button>
         </div>
+      </form>
+    </>
+  );
+}
+
+function CompanyEditor() {
+  const app = useApp();
+  const { data, setData } = useApi<CompanySettings>('/settings/company');
+  if (!data) return null;
+  const field = (k: keyof CompanySettings, label: string, type = 'text') => (
+    <div>
+      <span className="label">{label}</span>
+      <input className="input" type={type} value={String(data[k])} onChange={(e) => setData({ ...data, [k]: type === 'number' ? Number(e.target.value) : e.target.value })} />
+    </div>
+  );
+  return (
+    <>
+      <h2 className="mb-3 font-semibold">Company (shown on invoices)</h2>
+      <form
+        className="card mb-10 grid gap-3 p-5 sm:grid-cols-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setData(await api<CompanySettings>('/settings/company', { method: 'PUT', body: data }));
+          app.toast('Company settings saved');
+        }}
+      >
+        {field('name', 'Business name')}
+        {field('phone', 'Phone')}
+        {field('email', 'Email', 'email')}
+        {field('address', 'Address')}
+        {field('paymentTermsDays', 'Payment terms (days until due)', 'number')}
+        {field('defaultTaxRate', 'Default tax %', 'number')}
+        <div className="sm:col-span-2">
+          <span className="label">Invoice footer</span>
+          <textarea className="input" rows={2} value={data.invoiceFooter} onChange={(e) => setData({ ...data, invoiceFooter: e.target.value })} />
+        </div>
+        <div className="sm:col-span-2">
+          <Button>Save</Button>
+        </div>
+      </form>
+    </>
+  );
+}
+
+const ROLES: User['role'][] = ['owner', 'manager', 'technician', 'office'];
+
+function ChecklistTemplates() {
+  const app = useApp();
+  const { data, reload } = useApi<ChecklistTemplate[]>('/checklist-templates');
+  const [form, setForm] = useState({ title: '', role: '', divisionId: '', userId: '' });
+
+  const scope = (t: ChecklistTemplate) =>
+    [
+      t.userId ? app.user(t.userId)?.name : null,
+      t.role ? `${t.role}s` : null,
+      t.divisionId ? app.division(t.divisionId)?.name : null,
+    ]
+      .filter(Boolean)
+      .join(' · ') || 'Everyone';
+
+  return (
+    <>
+      <h2 className="mb-1 font-semibold">Daily checklists</h2>
+      <p className="mb-3 text-sm text-slate-500">These items appear on each matching employee's daily log every day. Target by role, division, or one person.</p>
+      <div className="card mb-3 divide-y divide-slate-100">
+        {data?.map((t) => (
+          <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+            <input type="checkbox" checked={t.active} onChange={async () => (await patch(`/checklist-templates/${t.id}`, { active: !t.active }), reload())} title="Active" />
+            <span className={t.active ? 'flex-1' : 'flex-1 text-slate-400 line-through'}>{t.title}</span>
+            <span className="text-xs capitalize text-slate-500">{scope(t)}</span>
+            <button className="text-slate-400 hover:text-rose-600" onClick={async () => confirm('Remove this checklist item?') && (await del(`/checklist-templates/${t.id}`), reload())}>
+              <Trash2 size={15} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <form
+        className="card mb-10 grid gap-2 p-4 sm:grid-cols-[1fr_130px_150px_150px_auto]"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          await post('/checklist-templates', form);
+          setForm({ title: '', role: '', divisionId: '', userId: '' });
+          reload();
+        }}
+      >
+        <input className="input" required placeholder="e.g. Pre-trip vehicle inspection" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+        <select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+          <option value="">Any role</option>
+          {ROLES.map((r) => (
+            <option key={r} value={r} className="capitalize">
+              {r}
+            </option>
+          ))}
+        </select>
+        <select className="input" value={form.divisionId} onChange={(e) => setForm({ ...form, divisionId: e.target.value })}>
+          <option value="">Any division</option>
+          {app.divisions.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+        <select className="input" value={form.userId} onChange={(e) => setForm({ ...form, userId: e.target.value })}>
+          <option value="">Anyone</option>
+          {app.users.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.name}
+            </option>
+          ))}
+        </select>
+        <Button>
+          <Plus size={15} /> Add
+        </Button>
       </form>
     </>
   );

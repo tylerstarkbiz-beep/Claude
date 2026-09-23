@@ -3,13 +3,14 @@ import clsx from 'clsx';
 import { AlertTriangle, CalendarClock, DollarSign, ListTodo, Wrench } from 'lucide-react';
 import { useApi } from '../api';
 import { useApp } from '../store';
-import { dateTime, money, relative, shortDate } from '../format';
+import { dateTime, hm, minutesSince, money, relative, shortDate, todayISO } from '../format';
 import { Avatar, DivisionBadge, PageHeader, Pill, StatusBattery, divisionIcon } from '../components/ui';
-import { JOB_STATUS_META, type DashboardStats } from '../../shared/types';
+import { JOB_STATUS_META, type DashboardStats, type Job } from '../../shared/types';
 
 export function Dashboard() {
   const app = useApp();
   const { data } = useApi<DashboardStats>(`/dashboard${app.divisionId ? `?divisionId=${app.divisionId}` : ''}`);
+  const { data: allJobs } = useApi<Job[]>('/jobs');
   if (!data) return <div className="text-slate-400">Loading…</div>;
 
   const sum = (k: keyof DashboardStats['divisions'][number]) => data.divisions.reduce((a, d) => a + (d[k] as number), 0);
@@ -57,6 +58,34 @@ export function Dashboard() {
           })}
         </div>
       )}
+
+      <section className="card mb-6 p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 font-semibold">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" /> On the clock now ({data.onTheClock.length})
+          </h2>
+          <Link to="/daily" className="text-sm text-indigo-600">
+            Daily logs →
+          </Link>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          {data.onTheClock.map((c) => {
+            const job = allJobs?.find((j) => j.id === c.jobId);
+            return (
+              <Link key={c.userId} to={`/daily/${c.userId}/${todayISO()}`} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50">
+                <Avatar user={app.user(c.userId)} size={28} />
+                <div>
+                  <div className="font-medium">{app.user(c.userId)?.name}</div>
+                  <div className="text-xs text-slate-500">
+                    {job ? `${job.number} · ${job.title}` : 'General time'} · {hm(minutesSince(c.startedAt))}
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+          {!data.onTheClock.length && <p className="text-sm text-slate-400">Nobody is clocked in.</p>}
+        </div>
+      </section>
 
       <div className="mb-6 card p-5">
         <div className="mb-3 flex items-center justify-between">

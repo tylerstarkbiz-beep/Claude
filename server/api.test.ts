@@ -1,25 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { AddressInfo } from 'node:net';
-import { openDb } from './db.ts';
-import { seed } from './seed.ts';
-import { createApp } from './index.ts';
-
-async function setup() {
-  const db = openDb(':memory:');
-  seed(db);
-  const server = createApp(db).listen(0);
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
-  const call = async (method: string, path: string, body?: unknown) => {
-    const res = await fetch(base + path, {
-      method,
-      headers: { 'content-type': 'application/json' },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    return { status: res.status, data: await res.json() };
-  };
-  return { db, call, close: () => server.close() };
-}
+import { setup } from './testutil.ts';
 
 test('bootstrap returns the four divisions with custom fields', async () => {
   const { call, close } = await setup();

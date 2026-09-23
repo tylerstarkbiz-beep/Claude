@@ -1,5 +1,6 @@
 // Demo data so the app is useful on first launch. Run `npm run seed` to reset.
 import { resolve } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { openDb, tx, type DB } from './db.ts';
 import type { AutomationAction, AutomationTrigger, FieldDef } from '../shared/types.ts';
 
@@ -94,6 +95,8 @@ const day = (offset: number, hour = 9) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(hour)}:00`;
 };
 const date = (offset: number) => day(offset).slice(0, 10);
+/** Local timestamp `offset` days from today at hh:mm. */
+const at = (offset: number, hh: number, mm = 0) => `${date(offset)}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`;
 
 interface SeedJob {
   division: string;
@@ -408,11 +411,11 @@ export function seed(db: DB) {
         t.due != null ? date(t.due) : null,
         t.job ? jobIds[t.job] : null,
         i,
-        status === 'done' ? new Date().toISOString() : null,
+        status === 'done' ? at(Math.min(t.due ?? 0, 0), 15, 20) : null,
       );
       const taskId = Number(r.lastInsertRowid);
       t.subtasks?.forEach(([title, st], k) => {
-        insertTask.run(boardIds[t.board], groupId, taskId, title, st ?? 'not_started', 'medium', t.assignee ? userIds[t.assignee] : null, null, null, k, st === 'done' ? new Date().toISOString() : null);
+        insertTask.run(boardIds[t.board], groupId, taskId, title, st ?? 'not_started', 'medium', t.assignee ? userIds[t.assignee] : null, null, null, k, st === 'done' ? at(-1, 10 + k, 5) : null);
       });
       for (const [author, body] of t.updates ?? []) {
         db.prepare('INSERT INTO task_updates (task_id, author_id, body) VALUES (?, ?, ?)').run(taskId, userIds[author], body);
@@ -428,7 +431,160 @@ export function seed(db: DB) {
         JSON.stringify({ ...action, boardId: boardIds[board], groupId: groupIds[`${board}/${group}`] }),
       );
     }
+
+    seedFieldData(db, { userIds, jobIds, divisionIds });
   });
+}
+
+// ---------- Time, daily logs, notes, invoices ----------
+
+// [title, role, division slug]; null = everyone
+const CHECKLIST: [string, string | null, string | null][] = [
+  ['Pre-trip vehicle walk-around (tires, lights, fluids)', 'technician', null],
+  ['Load truck & check equipment for today’s jobs', 'technician', null],
+  ['Photos uploaded for every job visited', 'technician', null],
+  ['Fuel receipt / mileage logged', 'technician', null],
+  ['Check dehus & air movers in the field; log readings', null, 'restoration'],
+  ['Log dump tickets and weights', null, 'junk-removal'],
+  ['Restock supply cart (chemicals, liners, paper)', null, 'janitorial'],
+  ['Verify refrigerant & parts inventory on truck', null, 'hvac'],
+  ['Confirm tomorrow’s appointments with clients', 'office', null],
+  ['Follow up on unpaid invoices', 'office', null],
+  ['Review crew daily logs & sign off', 'manager', null],
+];
+
+const NOTES: [string, string, number, number, string][] = [
+  // [job title, author, day offset, hour, body]
+  ['Water mitigation — burst supply line', 'Marcus Reed', -1, 9, 'Supply line under kitchen sink failed. Water migrated under cabinets into dining room and down to finished basement. Shut off at main, extraction started 9:15.'],
+  ['Water mitigation — burst supply line', 'Dana Cruz', -1, 13, 'Set 4 dehus + 12 air movers. Basement drywall wicking ~18in; flood cut scheduled tomorrow. Homeowner signed work auth.'],
+  ['Water mitigation — burst supply line', 'Dana Cruz', 0, 8, 'Day 2 readings: kitchen subfloor 19% (down from 31%), basement slab 28%. Added 2 air movers downstairs.'],
+  ['Storm damage — roof leak into bedroom', 'Dana Cruz', -6, 11, 'Tarped roof over NW bedroom. Ceiling drywall saturated ~6x8ft, removed and bagged. Insulation wet, removed.'],
+  ['No heat — sanctuary RTU', 'Kim Nguyen', -1, 15, 'Diagnosed failed hot surface igniter on stage 1. Ordered replacement, will return tomorrow AM. Temporarily running stage 2.'],
+  ['AC not cooling', 'Chris Walker', -1, 14, 'Bad run capacitor (35/5 reading 22). Replaced, added 2lb R-410A. Suction/head normal after. Recommended maintenance plan.'],
+  ['Garage cleanout', 'Tony Ruiz', 0, 7, 'Customer called — also wants the old fridge in the side yard hauled. Will quote on site.'],
+  ['Dental office deep clean', 'Sam Patel', -2, 22, 'Stripped & waxed lobby and 3 operatories. Break room grout needs attention next visit.'],
+  ['Water-damaged carpet & drywall haul-off', 'Tony Ruiz', -3, 15, 'Hauled 1/2 load from Harper basement (restoration referral). Dump ticket #44821, 1,340 lb.'],
+];
+
+function seedFieldData(db: DB, ids: { userIds: Record<string, number>; jobIds: Record<string, number>; divisionIds: Record<string, number> }) {
+  const { userIds, jobIds, divisionIds } = ids;
+  const users = db.prepare('SELECT id, role, division_ids FROM users').all() as { id: number; role: string; division_ids: string }[];
+
+  db.prepare("INSERT INTO settings (key, value) VALUES ('company', ?)").run(
+    JSON.stringify({
+      name: 'Summit Property Services',
+      phone: '(555) 400-2000',
+      email: 'office@summitservices.example.com',
+      address: '1200 Industrial Way, Suite 4',
+      paymentTermsDays: 30,
+      defaultTaxRate: 0,
+      invoiceFooter: 'Thank you for your business! Questions about this invoice? Call (555) 400-2000.',
+    }),
+  );
+
+  // Checklist templates, plus filled-in checklists for the last few days.
+  const templates = CHECKLIST.map(([title, role, division], i) => {
+    const r = db
+      .prepare('INSERT INTO checklist_templates (title, role, division_id, position) VALUES (?, ?, ?, ?)')
+      .run(title, role, division ? divisionIds[division] : null, i);
+    return { id: Number(r.lastInsertRowid), title, role, divisionId: division ? divisionIds[division] : null };
+  });
+  for (const u of users) {
+    const divs: number[] = JSON.parse(u.division_ids);
+    const mine = templates.filter((t) => (!t.role || t.role === u.role) && (!t.divisionId || divs.includes(t.divisionId)));
+    for (let offset = -4; offset <= -1; offset++) {
+      mine.forEach((t, i) => {
+        // Leave the odd item unchecked so history looks real.
+        const done = (u.id + offset + i) % 5 !== 0;
+        db.prepare('INSERT INTO daily_items (user_id, date, title, template_id, position, done_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+          u.id,
+          date(offset),
+          t.title,
+          t.id,
+          i,
+          done ? at(offset, 7, 30 + i * 3) : null,
+        );
+      });
+    }
+  }
+
+  // Time entries: a shop block, then job time, for the crew over the last four days.
+  const insertTime = db.prepare('INSERT INTO time_entries (user_id, job_id, started_at, ended_at, notes) VALUES (?, ?, ?, ?, ?)');
+  const crew: [string, string[]][] = [
+    ['Marcus Reed', ['Water mitigation — burst supply line', 'Unit 4B mold remediation']],
+    ['Dana Cruz', ['Water mitigation — burst supply line', 'Storm damage — roof leak into bedroom']],
+    ['Tony Ruiz', ['Water-damaged carpet & drywall haul-off', 'Estate cleanout — whole house']],
+    ['Sam Patel', ['Nightly clinic cleaning', 'Dental office deep clean']],
+    ['Kim Nguyen', ['No heat — sanctuary RTU', 'Mini-split tune-up']],
+    ['Chris Walker', ['AC not cooling', 'Quarterly PM — 6 rooftop units']],
+  ];
+  for (const [name, jobs] of crew) {
+    for (let offset = -4; offset <= -1; offset++) {
+      const u = userIds[name];
+      insertTime.run(u, null, at(offset, 7, 30), at(offset, 8, 5), 'Shop / load truck');
+      insertTime.run(u, jobIds[jobs[0]], at(offset, 8, 20), at(offset, 12, offset % 2 ? 10 : 40), null);
+      insertTime.run(u, jobIds[jobs[1]], at(offset, 13, 0), at(offset, 15, 45 - offset * 5), null);
+      insertTime.run(u, null, at(offset, 15, 55), at(offset, 16, 30), 'Drive back / unload');
+    }
+  }
+  // Today: a few people are on the clock right now.
+  const now = new Date();
+  const ago = (mins: number) => {
+    const d = new Date(now.getTime() - mins * 60000);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`;
+  };
+  insertTime.run(userIds['Kim Nguyen'], null, ago(190), ago(165), 'Shop / pick up igniter');
+  insertTime.run(userIds['Kim Nguyen'], jobIds['No heat — sanctuary RTU'], ago(160), null, null);
+  insertTime.run(userIds['Dana Cruz'], null, ago(150), ago(130), 'Shop');
+  insertTime.run(userIds['Dana Cruz'], jobIds['Water mitigation — burst supply line'], ago(125), null, null);
+  insertTime.run(userIds['Tony Ruiz'], null, ago(95), null, 'Shop / truck maintenance');
+
+  // End-of-day reports.
+  const insertReport = db.prepare(
+    'INSERT INTO daily_reports (user_id, date, summary, issues, tomorrow, submitted_at, reviewed_by, reviewed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  const reports: [string, string, string, string][] = [
+    ['Marcus Reed', 'Started Harper water loss: extraction, set drying equipment, work auth signed. Walked Riverbend 4B for mold scope.', 'Need 2 more dehus; all ours are out on jobs.', 'Harper flood cuts, moisture map. Send Riverbend estimate.'],
+    ['Dana Cruz', 'Harper setup with Marcus. Pulled wet insulation at Wells.', '', 'Harper day 2 readings, Gonzalez pack-out prep.'],
+    ['Tony Ruiz', 'Harper basement haul-off (1/2 load). Quoted estate cleanout at Wells.', 'Truck 2 check-engine light on again.', 'Garage cleanout at Chen, pick up trailer for hot tub job.'],
+    ['Sam Patel', 'Oakview nightly clean. Brightside deep clean finished.', 'Suite 110 trash complaint, handled with crew.', 'Walkthrough at First Baptist.'],
+    ['Kim Nguyen', 'Diagnosed First Baptist RTU igniter; ordered part. Brightside tune-ups.', '', 'Install igniter at First Baptist first thing.'],
+    ['Chris Walker', 'O’Brien AC: capacitor + charge. PM prep for Summit RTUs.', 'Low on 35/5 capacitors.', 'Parts run, Summit PM scheduling.'],
+  ];
+  const alex = userIds['Alex Morgan'];
+  reports.forEach(([name, summary, issues, tomorrow], i) => {
+    insertReport.run(userIds[name], date(-1), summary, issues, tomorrow, at(-1, 16, 35 + i), i < 3 ? alex : null, i < 3 ? at(-1, 18, 10 + i) : null);
+    insertReport.run(userIds[name], date(-2), 'Routine day, see time entries.', '', '', at(-2, 16, 40), alex, at(-2, 17, 30));
+  });
+
+  // Job notes.
+  for (const [job, author, offset, hour, body] of NOTES) {
+    const ts = offset === 0 ? ago(60 + hour) : at(offset, hour, 15);
+    db.prepare('INSERT INTO job_notes (job_id, author_id, body, created_at) VALUES (?, ?, ?, ?)').run(jobIds[job], userIds[author], body, ts);
+  }
+
+  // Invoices for jobs already billed.
+  const makeInvoice = (jobTitle: string, status: string, issueOffset: number, dueOffset: number, payments: [number, string, number][] = []) => {
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobIds[jobTitle]) as { id: number; client_id: number; division_id: number };
+    const n = (db.prepare('SELECT COALESCE(MAX(id), 0) + 1001 AS n FROM invoices').get() as { n: number }).n;
+    const r = db
+      .prepare(
+        'INSERT INTO invoices (number, job_id, client_id, division_id, status, issue_date, due_date, public_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(`INV-${n}`, job.id, job.client_id, job.division_id, status, date(issueOffset), date(dueOffset), randomBytes(16).toString('hex'));
+    const invoiceId = Number(r.lastInsertRowid);
+    db.prepare('INSERT INTO invoice_items (invoice_id, description, quantity, unit_price) SELECT ?, description, quantity, unit_price FROM line_items WHERE job_id = ?').run(
+      invoiceId,
+      job.id,
+    );
+    for (const [amount, method, offset] of payments) {
+      db.prepare('INSERT INTO payments (invoice_id, amount, method, paid_on) VALUES (?, ?, ?, ?)').run(invoiceId, amount, method, date(offset));
+    }
+  };
+  makeInvoice('Water-damaged carpet & drywall haul-off', 'sent', -3, -1);
+  makeInvoice('Couch & mattress pickup', 'paid', -9, -9, [[149, 'Card', -9]]);
+  makeInvoice('Mini-split tune-up', 'paid', -12, 18, [[357, 'Check', -5]]);
 }
 
 export function seedIfEmpty(db: DB) {
@@ -439,7 +595,18 @@ export function seedIfEmpty(db: DB) {
   }
 }
 
-const TABLES = ['activity', 'task_updates', 'tasks', 'groups', 'boards', 'automations', 'line_items', 'jobs', 'clients', 'users', 'divisions'];
+const TABLES = [
+  'settings',
+  'payments',
+  'invoice_items',
+  'invoices',
+  'daily_reports',
+  'daily_items',
+  'checklist_templates',
+  'photos',
+  'job_notes',
+  'time_entries',
+  'activity', 'task_updates', 'tasks', 'groups', 'boards', 'automations', 'line_items', 'jobs', 'clients', 'users', 'divisions'];
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename) && process.argv.includes('--reset')) {
   const db = openDb(process.env.DB_PATH ?? resolve(import.meta.dirname, '../data/fieldboard.db'));

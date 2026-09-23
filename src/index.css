@@ -14,3 +14,12 @@ body { color: #1e293b; }
   .label { @apply mb-1 block text-xs font-medium text-slate-500; }
   .card { @apply rounded-xl border border-slate-200 bg-white shadow-sm; }
 }
+
+/* Printing an invoice prints only the invoice document. */
+@media print {
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: absolute; inset: 0 auto auto 0; width: 100%; box-shadow: none; border: 0; }
+  .no-print { display: none !important; }
+  @page { margin: 12mm; }
+}

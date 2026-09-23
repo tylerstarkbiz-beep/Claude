@@ -218,17 +218,26 @@ export function createTask(db: DB, input: NewTask): Task {
       input.dueDate ?? null,
       input.jobId ?? null,
       pos.p,
-      status === 'done' ? new Date().toISOString() : null,
+      status === 'done' ? localDateTime() : null,
     );
   return getTask(db, Number(result.lastInsertRowid))!;
 }
+
+const pad = (n: number) => String(n).padStart(2, '0');
 
 /** YYYY-MM-DD in the server's local time zone, offset by `days`. */
 export function localDate(days = 0): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * YYYY-MM-DDTHH:MM:SS in local time. Field timestamps (clock-ins, completions, schedules) are stored
+ * this way so "which day did this happen" matches the crew's wall clock.
+ */
+export function localDateTime(d = new Date()): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 export class HttpError extends Error {

@@ -1,6 +1,7 @@
-import { Router, type Request, type Response, type NextFunction } from 'express';
+import { Router } from 'express';
+import { assertOneOf, h, id, optNum, patch, required } from './http.ts';
 import { logActivity, tx, type DB } from './db.ts';
-import { runAutomations } from './automations.ts';
+import { onJobStatusChanged, runAutomations } from './automations.ts';
 import {
   HttpError,
   JOB_SELECT,
@@ -10,6 +11,7 @@ import {
   getJob,
   getTask,
   localDate,
+  localDateTime,
   mapAutomation,
   mapBoard,
   mapClient,
@@ -24,7 +26,6 @@ import {
 } from './repo.ts';
 import {
   JOB_STATUSES,
-  JOB_STATUS_META,
   TASK_PRIORITIES,
   TASK_STATUSES,
   TASK_STATUS_META,
@@ -32,66 +33,6 @@ import {
   type JobStatus,
   type TaskStatus,
 } from '../shared/types.ts';
-
-type Handler = (req: Request, res: Response) => unknown;
-
-/** Wrap a sync handler so thrown errors become JSON responses. */
-const h =
-  (fn: Handler) =>
-  (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const out = fn(req, res);
-      if (!res.headersSent) res.json(out ?? { ok: true });
-    } catch (err) {
-      next(err);
-    }
-  };
-
-const id = (req: Request, name = 'id') => {
-  const n = Number(req.params[name]);
-  if (!Number.isInteger(n)) throw new HttpError(400, `Invalid ${name}`);
-  return n;
-};
-
-const optNum = (v: unknown) => (v === undefined || v === null || v === '' ? null : Number(v));
-
-function assertOneOf<T extends string>(value: unknown, allowed: readonly T[], label: string): T {
-  if (!allowed.includes(value as T)) throw new HttpError(400, `Invalid ${label}: ${String(value)}`);
-  return value as T;
-}
-
-function required(body: Record<string, unknown>, key: string): string {
-  const v = body[key];
-  if (typeof v !== 'string' || !v.trim()) throw new HttpError(400, `${key} is required`);
-  return v.trim();
-}
-
-/** Build an UPDATE from whichever whitelisted fields are present in the body. */
-function patch(
-  db: DB,
-  table: string,
-  rowId: number,
-  body: Record<string, unknown>,
-  columns: Record<string, string | ((v: unknown) => [string, unknown])>,
-  touch = false,
-) {
-  const sets: string[] = [];
-  const values: any[] = [];
-  for (const [key, col] of Object.entries(columns)) {
-    if (!(key in body)) continue;
-    if (typeof col === 'function') {
-      const [c, v] = col(body[key]);
-      sets.push(`${c} = ?`);
-      values.push(v);
-    } else {
-      sets.push(`${col} = ?`);
-      values.push(body[key] === '' ? null : (body[key] ?? null));
-    }
-  }
-  if (touch) sets.push("updated_at = datetime('now')");
-  if (!sets.length) return;
-  db.prepare(`UPDATE ${table} SET ${sets.join(', ')} WHERE id = ?`).run(...values, rowId);
-}
 
 export function createApi(db: DB): Router {
   const api = Router();
@@ -324,16 +265,7 @@ export function createApi(db: DB): Router {
           true,
         );
         const after = getJob(db, before.id)!;
-        let automations: string[] = [];
-        if (after.status !== before.status) {
-          logActivity(
-            db,
-            'job',
-            `${after.number} moved from ${JOB_STATUS_META[before.status].label} to ${JOB_STATUS_META[after.status].label}`,
-            { jobId: after.id },
-          );
-          automations = runAutomations(db, { type: 'job_status_changed', job: after, from: before.status, to: after.status });
-        }
+        const automations = after.status !== before.status ? onJobStatusChanged(db, before, after) : [];
         return { ...getJob(db, before.id), automations };
       });
     }),
@@ -543,7 +475,7 @@ export function createApi(db: DB): Router {
           groupId: (v) => ['group_id', Number(v)],
         });
         if ('status' in b && b.status !== before.status) {
-          db.prepare('UPDATE tasks SET completed_at = ? WHERE id = ?').run(b.status === 'done' ? new Date().toISOString() : null, before.id);
+          db.prepare('UPDATE tasks SET completed_at = ? WHERE id = ?').run(b.status === 'done' ? localDateTime() : null, before.id);
           const after = getTask(db, before.id)!;
           logActivity(
             db,
@@ -636,7 +568,12 @@ export function createApi(db: DB): Router {
               d.id,
               monthStart,
             ),
-            outstanding: one(`SELECT SUM(${total}) AS n FROM jobs j WHERE division_id = ? AND status = 'invoiced'`, d.id),
+            outstanding: one(
+              `SELECT SUM(COALESCE((SELECT SUM(quantity * unit_price) FROM invoice_items it WHERE it.invoice_id = i.id), 0) * (1 + i.tax_rate / 100.0)
+                 - COALESCE((SELECT SUM(amount) FROM payments p WHERE p.invoice_id = i.id), 0)) AS n
+               FROM invoices i WHERE i.division_id = ? AND i.status = 'sent'`,
+              d.id,
+            ),
             openTasks: one(
               `SELECT COUNT(*) AS n FROM tasks WHERE status != 'done' AND board_id IN (SELECT id FROM boards WHERE division_id = ?)`,
               d.id,
@@ -674,15 +611,17 @@ export function createApi(db: DB): Router {
         .all()
         .map((r) => ({ id: r.id as number, kind: r.kind as string, message: r.message as string, jobId: r.job_id as number | null, taskId: r.task_id as number | null, createdAt: r.created_at as string }));
 
-      return { divisions: perDivision, jobsByStatus, upcomingJobs, overdueTasks, recentActivity };
+      const onTheClock = (
+        db.prepare('SELECT user_id, job_id, started_at FROM time_entries WHERE ended_at IS NULL ORDER BY started_at').all() as {
+          user_id: number;
+          job_id: number | null;
+          started_at: string;
+        }[]
+      ).map((r) => ({ userId: r.user_id, jobId: r.job_id, startedAt: r.started_at }));
+
+      return { divisions: perDivision, jobsByStatus, upcomingJobs, overdueTasks, recentActivity, onTheClock };
     }),
   );
-
-  api.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
-    console.error(err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Server error' });
-  });
 
   return api;
 }

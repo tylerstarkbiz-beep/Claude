@@ -2,7 +2,7 @@
 // Rules are evaluated synchronously after the change that fired them.
 import { logActivity, type DB } from './db.ts';
 import { createTask, getClient, getJob, localDate, mapAutomation } from './repo.ts';
-import type { Automation, Job, JobStatus, Task, TaskStatus } from '../shared/types.ts';
+import { JOB_STATUS_META, type Automation, type Job, type JobStatus, type Task, type TaskStatus } from '../shared/types.ts';
 
 export type AutomationEvent =
   | { type: 'job_created'; job: Job }
@@ -89,4 +89,20 @@ export function runAutomations(db: DB, event: AutomationEvent, depth = 0): strin
     if (ran.length > before) db.prepare('UPDATE automations SET run_count = run_count + 1 WHERE id = ?').run(rule.id);
   }
   return ran;
+}
+
+/** Log a job's status change and run matching automations. Call after the row is updated. */
+export function onJobStatusChanged(db: DB, before: Job, after: Job): string[] {
+  logActivity(db, 'job', `${after.number} moved from ${JOB_STATUS_META[before.status].label} to ${JOB_STATUS_META[after.status].label}`, {
+    jobId: after.id,
+  });
+  return runAutomations(db, { type: 'job_status_changed', job: after, from: before.status, to: after.status });
+}
+
+/** Move a job to a new status (no-op if already there), with logging and automations. */
+export function setJobStatus(db: DB, jobId: number, status: JobStatus): string[] {
+  const before = getJob(db, jobId);
+  if (!before || before.status === status) return [];
+  db.prepare("UPDATE jobs SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, jobId);
+  return onJobStatusChanged(db, before, getJob(db, jobId)!);
 }

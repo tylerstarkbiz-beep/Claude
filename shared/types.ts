@@ -223,4 +223,178 @@ export interface DashboardStats {
   upcomingJobs: Job[];
   overdueTasks: Task[];
   recentActivity: ActivityEntry[];
+  onTheClock: { userId: number; jobId: number | null; startedAt: string }[];
+}
+
+// ---------- Time tracking ----------
+
+/**
+ * One continuous block of work. A user is "clocked in" while they have an entry with no endedAt.
+ * jobId = null means general time (shop, travel, admin); otherwise time on that job.
+ * Timestamps are local wall-clock ISO strings (YYYY-MM-DDTHH:MM:SS).
+ */
+export interface TimeEntry {
+  id: number;
+  userId: number;
+  jobId: number | null;
+  startedAt: string;
+  endedAt: string | null;
+  notes: string | null;
+  job?: { number: string; title: string; divisionId: number } | null;
+}
+
+// ---------- Job notes & photos ----------
+
+export interface Photo {
+  id: number;
+  jobId: number;
+  noteId: number | null;
+  authorId: number | null;
+  url: string;
+  caption: string | null;
+  createdAt: string;
+}
+
+export interface JobNote {
+  id: number;
+  jobId: number;
+  authorId: number | null;
+  body: string;
+  createdAt: string;
+  photos: Photo[];
+}
+
+// ---------- Invoicing ----------
+
+export const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'void'] as const;
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+
+export const INVOICE_STATUS_META: Record<InvoiceStatus | 'overdue', { label: string; color: string }> = {
+  draft: { label: 'Draft', color: '#94a3b8' },
+  sent: { label: 'Awaiting payment', color: '#0ea5e9' },
+  overdue: { label: 'Overdue', color: '#e2445c' },
+  paid: { label: 'Paid', color: '#16a34a' },
+  void: { label: 'Void', color: '#64748b' },
+};
+
+export const PAYMENT_METHODS = ['Card', 'Check', 'Cash', 'ACH', 'Insurance', 'Other'] as const;
+
+export interface InvoiceItem {
+  id: number;
+  invoiceId: number;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface Payment {
+  id: number;
+  invoiceId: number;
+  amount: number;
+  method: string;
+  paidOn: string;
+  note: string | null;
+}
+
+export interface Invoice {
+  id: number;
+  number: string;
+  jobId: number | null;
+  clientId: number;
+  divisionId: number | null;
+  status: InvoiceStatus;
+  issueDate: string;
+  dueDate: string;
+  taxRate: number;
+  notes: string | null;
+  publicToken: string;
+  subtotal: number;
+  tax: number;
+  total: number;
+  amountPaid: number;
+  balance: number;
+  overdue: boolean;
+  createdAt: string;
+}
+
+export interface InvoiceDetail extends Invoice {
+  items: InvoiceItem[];
+  payments: Payment[];
+  client: Client;
+  job: Job | null;
+}
+
+// ---------- Daily logs ----------
+
+/** A recurring daily checklist item that auto-appears for matching employees. */
+export interface ChecklistTemplate {
+  id: number;
+  title: string;
+  /** Limit to one person, one role, and/or one division. All null = everyone. */
+  userId: number | null;
+  role: User['role'] | null;
+  divisionId: number | null;
+  active: boolean;
+}
+
+export interface DailyItem {
+  id: number;
+  userId: number;
+  date: string;
+  title: string;
+  doneAt: string | null;
+  templateId: number | null;
+  createdBy: number | null;
+}
+
+export interface DailyReport {
+  summary: string;
+  issues: string;
+  tomorrow: string;
+  submittedAt: string | null;
+  reviewedBy: number | null;
+  reviewedAt: string | null;
+}
+
+/** Everything one employee did (and was supposed to do) on one day. */
+export interface DailyLog {
+  userId: number;
+  date: string;
+  items: DailyItem[];
+  report: DailyReport;
+  timeEntries: TimeEntry[];
+  totalMinutes: number;
+  jobMinutes: number;
+  jobs: Job[];
+  tasksCompleted: Task[];
+  tasksOpen: Task[];
+  notes: (JobNote & { job: { id: number; number: string; title: string } })[];
+}
+
+/** One row in the team's daily overview. */
+export interface DailySummary {
+  userId: number;
+  totalMinutes: number;
+  clockedIn: boolean;
+  currentJobId: number | null;
+  itemsDone: number;
+  itemsTotal: number;
+  tasksCompleted: number;
+  jobs: number;
+  notes: number;
+  submitted: boolean;
+  reviewed: boolean;
+}
+
+/** Business details printed on invoices. */
+export interface CompanySettings {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  /** Default days until an invoice is due. */
+  paymentTermsDays: number;
+  /** Default sales tax % for new invoices. */
+  defaultTaxRate: number;
+  invoiceFooter: string;
 }

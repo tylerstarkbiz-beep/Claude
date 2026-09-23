@@ -42,3 +42,23 @@ export const initials = (name: string) =>
     .join('')
     .slice(0, 2)
     .toUpperCase();
+
+/** 445 → "7h 25m" */
+export function hm(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
+}
+
+/** Minutes since a local timestamp. */
+export const minutesSince = (iso: string) => Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+
+export function addDays(iso: string, days: number) {
+  const d = new Date(iso + 'T00:00');
+  d.setDate(d.getDate() + days);
+  return localDate(d);
+}
+
+export function longDate(iso: string) {
+  return new Date(iso + 'T00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}

@@ -5,6 +5,10 @@ import {
   CalendarDays,
   CircleUserRound,
   ClipboardList,
+  Clock,
+  NotebookPen,
+  Receipt,
+  Smartphone,
   LayoutDashboard,
   LayoutGrid,
   Menu,
@@ -24,6 +28,9 @@ const NAV = [
   { to: '/my-work', label: 'My Work', icon: CircleUserRound },
   { to: '/jobs', label: 'Jobs', icon: Wrench },
   { to: '/schedule', label: 'Schedule', icon: CalendarDays },
+  { to: '/daily', label: 'Daily Logs', icon: NotebookPen },
+  { to: '/timesheets', label: 'Timesheets', icon: Clock },
+  { to: '/invoices', label: 'Invoices', icon: Receipt },
   { to: '/clients', label: 'Clients', icon: Users },
   { to: '/automations', label: 'Automations', icon: Zap },
   { to: '/settings', label: 'Settings', icon: Settings },
@@ -64,6 +71,10 @@ export function Layout() {
           <Icon size={17} /> {label}
         </NavLink>
       ))}
+
+      <NavLink to="/tech" className="mt-1 flex items-center gap-2.5 rounded-md px-2.5 py-2 text-slate-600 hover:bg-slate-100">
+        <Smartphone size={17} /> Tech app
+      </NavLink>
 
       <div className="mt-5 flex items-center justify-between px-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
         Boards

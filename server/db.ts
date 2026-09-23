@@ -123,6 +123,108 @@ CREATE TABLE IF NOT EXISTS activity (
   task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS time_entries (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  job_id INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  notes TEXT
+);
+CREATE INDEX IF NOT EXISTS time_user_start ON time_entries(user_id, started_at);
+CREATE INDEX IF NOT EXISTS time_job ON time_entries(job_id);
+
+CREATE TABLE IF NOT EXISTS job_notes (
+  id INTEGER PRIMARY KEY,
+  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  body TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS job_notes_job ON job_notes(job_id);
+
+CREATE TABLE IF NOT EXISTS photos (
+  id INTEGER PRIMARY KEY,
+  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  note_id INTEGER REFERENCES job_notes(id) ON DELETE CASCADE,
+  author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  filename TEXT NOT NULL,
+  caption TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS photos_job ON photos(job_id);
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id INTEGER PRIMARY KEY,
+  number TEXT NOT NULL UNIQUE,
+  job_id INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+  client_id INTEGER NOT NULL REFERENCES clients(id),
+  division_id INTEGER REFERENCES divisions(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  issue_date TEXT NOT NULL,
+  due_date TEXT NOT NULL,
+  tax_rate REAL NOT NULL DEFAULT 0,
+  notes TEXT,
+  public_token TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS invoice_items (
+  id INTEGER PRIMARY KEY,
+  invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  quantity REAL NOT NULL DEFAULT 1,
+  unit_price REAL NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id INTEGER PRIMARY KEY,
+  invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  amount REAL NOT NULL,
+  method TEXT NOT NULL,
+  paid_on TEXT NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS checklist_templates (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT,
+  division_id INTEGER REFERENCES divisions(id) ON DELETE CASCADE,
+  active INTEGER NOT NULL DEFAULT 1,
+  position INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS daily_items (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  title TEXT NOT NULL,
+  done_at TEXT,
+  template_id INTEGER REFERENCES checklist_templates(id) ON DELETE SET NULL,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (user_id, date, template_id)
+);
+CREATE INDEX IF NOT EXISTS daily_items_user_date ON daily_items(user_id, date);
+
+CREATE TABLE IF NOT EXISTS daily_reports (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  issues TEXT NOT NULL DEFAULT '',
+  tomorrow TEXT NOT NULL DEFAULT '',
+  submitted_at TEXT,
+  reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at TEXT,
+  PRIMARY KEY (user_id, date)
+);
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;
 
 export function openDb(path: string): DB {

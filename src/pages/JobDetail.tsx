@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import clsx from 'clsx';
-import { ArrowLeft, Mail, MapPin, Phone, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Mail, MapPin, Phone, Plus, Receipt, Trash2 } from 'lucide-react';
 import { del, patch, post, useApi } from '../api';
 import { useApp } from '../store';
-import { money, relative, shortDate, todayISO } from '../format';
-import { Avatar, Button, CustomFieldInput, DivisionBadge, StatusCell } from '../components/ui';
+import { hm, money, relative, shortDate, todayISO } from '../format';
+import { Avatar, Button, CustomFieldInput, DivisionBadge, Pill, StatusCell } from '../components/ui';
 import { TaskDrawer, statusOptions } from '../components/TaskDrawer';
-import { JOB_STATUSES, JOB_STATUS_META, type Job, type JobDetail, type LineItem, type Task } from '../../shared/types';
+import { NotesFeed } from '../components/NotesFeed';
+import { invoiceBadge } from './Invoices';
+import { JOB_STATUSES, JOB_STATUS_META, type Invoice, type InvoiceDetail, type Job, type JobDetail, type LineItem, type Task, type TimeEntry } from '../../shared/types';
 
 type Detail = JobDetail & { activity: { id: number; message: string; createdAt: string; kind: string }[] };
 
@@ -166,9 +168,16 @@ export function JobDetailPage() {
           )}
 
           <LineItems job={job} onChange={reload} />
+
+          <section className="card p-5">
+            <h2 className="mb-4 font-semibold">Notes & photos</h2>
+            <NotesFeed jobId={job.id} />
+          </section>
         </div>
 
         <div className="space-y-6">
+          <JobInvoices job={job} />
+          <JobTime jobId={job.id} />
           <JobTasks job={job} onOpen={setOpenTask} onChange={reload} />
 
           <section className="card p-5">
@@ -328,6 +337,89 @@ function JobTasks({ job, onOpen, onChange }: { job: Detail; onOpen: (id: number)
           </Button>
         </div>
       </div>
+    </section>
+  );
+}
+
+function JobInvoices({ job }: { job: Detail }) {
+  const app = useApp();
+  const navigate = useNavigate();
+  const { data: invoices } = useApi<Invoice[]>(`/invoices?jobId=${job.id}`);
+  const open = invoices?.filter((i) => i.status !== 'void') ?? [];
+
+  async function create() {
+    if (open.length && !confirm('This job already has an invoice. Create another one?')) return;
+    try {
+      const inv = await post<InvoiceDetail>('/invoices', { jobId: job.id });
+      navigate(`/invoices/${inv.id}`);
+    } catch (e) {
+      app.toast((e as Error).message, 'error');
+    }
+  }
+
+  return (
+    <section className="card p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-semibold">Invoicing</h2>
+        <Button variant={open.length ? 'secondary' : 'primary'} onClick={create}>
+          <Receipt size={15} /> Create invoice
+        </Button>
+      </div>
+      {invoices?.map((i) => {
+        const b = invoiceBadge(i);
+        return (
+          <Link key={i.id} to={`/invoices/${i.id}`} className="flex items-center gap-2 rounded-md py-1.5 text-sm hover:bg-slate-50">
+            <span className="font-mono font-medium">{i.number}</span>
+            <Pill label={b.label} color={b.color} />
+            <span className="ml-auto">{i.balance > 0 ? `${money(i.balance)} due` : money(i.total)}</span>
+          </Link>
+        );
+      })}
+      {invoices && !invoices.length && (
+        <p className="text-sm text-slate-500">
+          {['completed'].includes(job.status) ? 'Job is complete and ready to invoice.' : 'No invoices yet.'}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function JobTime({ jobId }: { jobId: number }) {
+  const app = useApp();
+  const { data: entries } = useApi<TimeEntry[]>(`/time?jobId=${jobId}`);
+  if (!entries) return null;
+  const mins = (e: TimeEntry) => Math.round(((e.endedAt ? new Date(e.endedAt) : new Date()).getTime() - new Date(e.startedAt).getTime()) / 60000);
+  const byUser = new Map<number, number>();
+  for (const e of entries) byUser.set(e.userId, (byUser.get(e.userId) ?? 0) + mins(e));
+  const total = [...byUser.values()].reduce((a, b) => a + b, 0);
+  const days = [...new Set(entries.map((e) => e.startedAt.slice(0, 10)))];
+
+  return (
+    <section className="card p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-semibold">Labor</h2>
+        <span className="text-sm font-semibold">{hm(total)}</span>
+      </div>
+      {!entries.length && <p className="text-sm text-slate-500">No time tracked on this job yet.</p>}
+      {[...byUser].map(([userId, m]) => (
+        <div key={userId} className="flex items-center gap-2 py-1 text-sm">
+          <Avatar user={app.user(userId)} size={22} />
+          <span className="flex-1">{app.user(userId)?.name}</span>
+          {entries.some((e) => e.userId === userId && !e.endedAt) && <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" title="On this job now" />}
+          <span className="font-medium">{hm(m)}</span>
+        </div>
+      ))}
+      {days.length > 0 && (
+        <div className="mt-2 text-xs text-slate-500">
+          Across {days.length} day{days.length > 1 ? 's' : ''}:{' '}
+          {days.map((d, i) => (
+            <span key={d}>
+              {i > 0 && ', '}
+              {shortDate(d)}
+            </span>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
