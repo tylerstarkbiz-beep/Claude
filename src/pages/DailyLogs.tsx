@@ -96,7 +96,7 @@ export function DailyLogs() {
                   </span>
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                  <div className={clsx('h-full', pct === 100 ? 'bg-emerald-500' : 'bg-indigo-500')} style={{ width: `${pct}%` }} />
+                  <div className={clsx('h-full', pct === 100 ? 'bg-emerald-500' : 'bg-brand-500')} style={{ width: `${pct}%` }} />
                 </div>
               </div>
 
@@ -229,7 +229,7 @@ export function Checklist({ log, onChange, large }: { log: DailyLog; onChange: (
     <section className="card p-5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="flex items-center gap-2 font-semibold">
-          <ClipboardCheck size={18} className="text-indigo-600" /> Daily checklist
+          <ClipboardCheck size={18} className="text-brand-600" /> Daily checklist
         </h2>
         <span className="text-sm text-slate-500">
           {done}/{log.items.length}
@@ -243,7 +243,7 @@ export function Checklist({ log, onChange, large }: { log: DailyLog; onChange: (
               className={clsx(
                 'grid shrink-0 place-items-center rounded-md border-2 transition',
                 large ? 'h-7 w-7' : 'h-5 w-5',
-                item.doneAt ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 hover:border-indigo-400',
+                item.doneAt ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 hover:border-brand-400',
               )}
               aria-label={item.doneAt ? 'Mark not done' : 'Mark done'}
             >
@@ -252,7 +252,7 @@ export function Checklist({ log, onChange, large }: { log: DailyLog; onChange: (
             <span className={clsx('flex-1', large ? 'py-3 text-base' : 'py-1.5 text-sm', item.doneAt && 'text-slate-400 line-through')}>
               {item.title}
               {!item.templateId && item.createdBy && item.createdBy !== log.userId && (
-                <span className="ml-2 text-xs text-indigo-600 no-underline">assigned by {app.user(item.createdBy)?.name.split(' ')[0]}</span>
+                <span className="ml-2 text-xs text-brand-600 no-underline">assigned by {app.user(item.createdBy)?.name.split(' ')[0]}</span>
               )}
             </span>
             {item.doneAt && <span className="text-xs text-slate-400">{time(item.doneAt)}</span>}
@@ -295,7 +295,7 @@ function TasksCard({ log, onOpen, onChange }: { log: DailyLog; onOpen: (id: numb
   return (
     <section className="card p-5">
       <h2 className="mb-3 flex items-center gap-2 font-semibold">
-        <CalendarCheck size={18} className="text-indigo-600" /> Tasks
+        <CalendarCheck size={18} className="text-brand-600" /> Tasks
       </h2>
       {log.tasksOpen.length > 0 && (
         <>
@@ -367,7 +367,7 @@ export function ReportCard({ log, user, onChange, large }: { log: DailyLog; user
     <section className="card p-5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="flex items-center gap-2 font-semibold">
-          <FileText size={18} className="text-indigo-600" /> End-of-day report
+          <FileText size={18} className="text-brand-600" /> End-of-day report
         </h2>
         {log.report.reviewedAt ? (
           <span className="flex items-center gap-1 text-xs font-medium text-emerald-700">
@@ -421,7 +421,7 @@ function Timeline({ log }: { log: DailyLog }) {
             </div>
             <div className="text-sm">
               {e.job ? (
-                <Link to={`/jobs/${e.jobId}`} className="hover:text-indigo-600">
+                <Link to={`/jobs/${e.jobId}`} className="hover:text-brand-600">
                   <span className="font-mono text-xs text-slate-400">{e.job.number}</span> {e.job.title}
                 </Link>
               ) : (
@@ -443,7 +443,7 @@ function Timeline({ log }: { log: DailyLog }) {
       kind: 'note' as const,
       node: (
         <div className="text-sm">
-          <Link to={`/jobs/${n.jobId}`} className="text-xs text-slate-500 hover:text-indigo-600">
+          <Link to={`/jobs/${n.jobId}`} className="text-xs text-slate-500 hover:text-brand-600">
             Note on {n.job.number}
           </Link>
           {n.body && <p className="line-clamp-3 whitespace-pre-wrap">{n.body}</p>}

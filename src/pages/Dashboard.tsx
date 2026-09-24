@@ -81,7 +81,7 @@ export function Dashboard() {
           <h2 className="flex items-center gap-2 font-semibold">
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" /> On the clock now ({data.onTheClock.length})
           </h2>
-          <Link to="/daily" className="text-sm text-indigo-600">
+          <Link to="/daily" className="text-sm text-brand-600">
             Daily logs →
           </Link>
         </div>
@@ -107,7 +107,7 @@ export function Dashboard() {
       <div className="mb-6 card p-5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-semibold">Job pipeline</h2>
-          <Link to="/jobs" className="text-sm text-indigo-600">
+          <Link to="/jobs" className="text-sm text-brand-600">
             Open pipeline →
           </Link>
         </div>
@@ -165,7 +165,7 @@ export function Dashboard() {
           <div className="grid gap-x-8 gap-y-2 md:grid-cols-2">
             {data.recentActivity.map((a) => (
               <div key={a.id} className="flex items-baseline justify-between gap-3 text-sm">
-                <span className={clsx('truncate', a.kind === 'automation' && 'text-indigo-700', a.kind === 'automation_error' && 'text-rose-600')}>
+                <span className={clsx('truncate', a.kind === 'automation' && 'text-brand-700', a.kind === 'automation_error' && 'text-rose-600')}>
                   {a.jobId ? <Link to={`/jobs/${a.jobId}`} className="hover:underline">{a.message}</Link> : a.message}
                 </span>
                 <span className="shrink-0 text-xs text-slate-400">{relative(a.createdAt)}</span>
@@ -195,10 +195,10 @@ function Kpi({
   onClick: () => void;
 }) {
   return (
-    <button onClick={onClick} className="card group p-4 text-left transition hover:border-indigo-300 hover:shadow-md">
+    <button onClick={onClick} className="card group p-4 text-left transition hover:border-brand-300 hover:shadow-md">
       <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
         <Icon size={16} /> {label}
-        <ChevronRight size={16} className="ml-auto text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-indigo-500" />
+        <ChevronRight size={16} className="ml-auto text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-brand-500" />
       </div>
       <div className="text-2xl font-bold tabular-nums">{value}</div>
       {sub && <div className={clsx('mt-1 text-xs', alert ? 'text-rose-600' : 'text-slate-500')}>{sub}</div>}

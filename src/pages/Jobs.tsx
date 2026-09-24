@@ -63,7 +63,7 @@ export function Jobs() {
             <button
               key={v}
               onClick={() => setView(v)}
-              className={clsx('flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm', view === v ? 'bg-indigo-50 font-medium text-indigo-700' : 'text-slate-600')}
+              className={clsx('flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm', view === v ? 'bg-brand-50 font-medium text-brand-700' : 'text-slate-600')}
             >
               <Icon size={15} /> {label}
             </button>
@@ -95,7 +95,7 @@ export function Jobs() {
             return (
               <div
                 key={s}
-                className={clsx('w-64 shrink-0 rounded-lg bg-slate-100 p-2', dragOver === s && 'ring-2 ring-indigo-400')}
+                className={clsx('w-64 shrink-0 rounded-lg bg-slate-100 p-2', dragOver === s && 'ring-2 ring-brand-400')}
                 onDragOver={(e) => (e.preventDefault(), setDragOver(s))}
                 onDragLeave={() => setDragOver(null)}
                 onDrop={(e) => {
@@ -155,7 +155,7 @@ export function Jobs() {
               {list.map((j) => (
                 <tr key={j.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                   <td className="px-4 py-3">
-                    <Link to={`/jobs/${j.id}`} className="font-medium hover:text-indigo-600">
+                    <Link to={`/jobs/${j.id}`} className="font-medium hover:text-brand-600">
                       {j.title}
                     </Link>
                     <div className="font-mono text-xs text-slate-400">{j.number}</div>

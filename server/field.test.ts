@@ -141,3 +141,22 @@ test('seeded overdue invoice is flagged', async () => {
   assert.ok(data.some((i: any) => i.overdue));
   close();
 });
+
+test('company branding: defaults to the logo and colors, validates changes, and ships with bootstrap', async () => {
+  const { call, close } = await setup();
+  const { data: boot } = await call('GET', '/bootstrap');
+  assert.equal(boot.company.brandColor, '#184478');
+  assert.match(boot.company.logo, /^data:image\/png;base64,/);
+
+  assert.equal((await call('PUT', '/settings/company', { brandColor: 'navy' })).status, 400);
+  assert.equal((await call('PUT', '/settings/company', { logo: 'data:text/html;base64,PGgxPg==' })).status, 400);
+  assert.equal((await call('PUT', '/settings/company', { logo: 'https://example.com/logo.png' })).status, 400);
+
+  const saved = await call('PUT', '/settings/company', { brandColor: '#0a5c36', accentColor: '#f59e0b', logo: PNG });
+  assert.equal(saved.status, 200);
+  assert.equal((await call('GET', '/bootstrap')).data.company.brandColor, '#0a5c36');
+
+  const removed = await call('PUT', '/settings/company', { logo: null });
+  assert.equal(removed.data.logo, null);
+  close();
+});

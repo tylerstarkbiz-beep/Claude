@@ -63,7 +63,7 @@ export function Button({
       {...props}
       className={clsx(
         'inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition disabled:opacity-50',
-        variant === 'primary' && 'bg-indigo-600 text-white hover:bg-indigo-700',
+        variant === 'primary' && 'bg-brand-600 text-white hover:bg-brand-700',
         variant === 'secondary' && 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
         variant === 'ghost' && 'text-slate-600 hover:bg-slate-100',
         variant === 'danger' && 'text-rose-600 hover:bg-rose-50',
@@ -173,7 +173,7 @@ export function PersonPicker({
               key={u.id}
               className={clsx(
                 'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100',
-                u.id === value && 'bg-indigo-50',
+                u.id === value && 'bg-brand-50',
               )}
               onClick={() => (onChange(u.id), setOpen(false))}
             >

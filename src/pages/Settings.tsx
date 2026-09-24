@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Upload } from 'lucide-react';
 import { api, del, patch, post, useApi } from '../api';
+import { resizeImage } from '../photos';
+import { DEFAULT_BRAND, DEFAULT_LOGO } from '../../shared/brand';
 import { useApp } from '../store';
 import { Button, PageHeader } from '../components/ui';
 import type { ChecklistTemplate, CompanySettings, Division, FieldDef, FieldType, User } from '../../shared/types';
@@ -24,7 +26,7 @@ export function SettingsPage() {
       <h2 className="mb-2 font-semibold">Team</h2>
       <p className="mb-10 text-sm text-slate-500">
         Team members, hourly costs and permissions are managed on the{' '}
-        <Link to="/team" className="text-indigo-600 hover:underline">
+        <Link to="/team" className="text-brand-600 hover:underline">
           Team page
         </Link>
         .
@@ -122,24 +124,130 @@ const slug = (s: string) =>
 function CompanyEditor() {
   const app = useApp();
   const { data, setData } = useApi<CompanySettings>('/settings/company');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Preview colors live while editing; put the saved colors back when leaving without saving.
+  useEffect(() => {
+    if (!data) return;
+    document.documentElement.style.setProperty('--brand', data.brandColor);
+    document.documentElement.style.setProperty('--accent', data.accentColor);
+  }, [data?.brandColor, data?.accentColor]);
+  useEffect(
+    () => () => {
+      document.documentElement.style.setProperty('--brand', app.company.brandColor);
+      document.documentElement.style.setProperty('--accent', app.company.accentColor);
+    },
+    [app.company],
+  );
+
   if (!data) return null;
   const field = (k: keyof CompanySettings, label: string, type = 'text') => (
     <div>
       <span className="label">{label}</span>
-      <input className="input" type={type} value={String(data[k])} onChange={(e) => setData({ ...data, [k]: type === 'number' ? Number(e.target.value) : e.target.value })} />
+      <input
+        id={`company-${k}`}
+        className="input"
+        type={type}
+        value={String(data[k] ?? '')}
+        onChange={(e) => setData({ ...data, [k]: type === 'number' ? Number(e.target.value) : e.target.value })}
+      />
     </div>
   );
+  const color = (k: 'brandColor' | 'accentColor', label: string, hint: string) => (
+    <div>
+      <span className="label">{label}</span>
+      <div className="flex items-center gap-2">
+        <input
+          type="color"
+          aria-label={label}
+          className="h-9 w-12 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+          value={data[k]}
+          onChange={(e) => setData({ ...data, [k]: e.target.value })}
+        />
+        <input
+          id={`company-${k}`}
+          className="input w-28 font-mono uppercase"
+          value={data[k]}
+          maxLength={7}
+          onChange={(e) => /^#[0-9a-f]{0,6}$/i.test(e.target.value) && setData({ ...data, [k]: e.target.value })}
+        />
+      </div>
+      <p className="mt-1 text-xs text-slate-500">{hint}</p>
+    </div>
+  );
+
+  async function pickLogo(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    try {
+      // PNG keeps transparent backgrounds; 800px is plenty for the app and invoices.
+      setData({ ...data!, logo: await resizeImage(file, 800, 0.92, 'image/png') });
+    } catch {
+      app.toast('Could not read that image', 'error');
+    } finally {
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
   return (
     <>
-      <h2 className="mb-3 font-semibold">Company (shown on invoices)</h2>
+      <h2 className="mb-3 font-semibold">Company & branding</h2>
       <form
-        className="card mb-10 grid gap-3 p-5 sm:grid-cols-2"
+        className="card mb-10 grid gap-4 p-5 sm:grid-cols-2"
         onSubmit={async (e) => {
           e.preventDefault();
-          setData(await api<CompanySettings>('/settings/company', { method: 'PUT', body: data }));
-          app.toast('Company settings saved');
+          try {
+            setData(await api<CompanySettings>('/settings/company', { method: 'PUT', body: data }));
+            await app.reload();
+            app.toast('Company settings saved');
+          } catch (err) {
+            app.toast((err as Error).message, 'error');
+          }
         }}
       >
+        <div className="sm:col-span-2">
+          <span className="label">Logo (shown in the app, the tech app and on invoices)</span>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="grid h-28 w-40 place-items-center rounded-lg border border-dashed border-slate-300 bg-white p-2">
+              {data.logo ? <img src={data.logo} alt="Company logo" className="h-full w-full object-contain" /> : <span className="text-xs text-slate-400">No logo</span>}
+            </div>
+            <div className="flex flex-col gap-2">
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => pickLogo(e.target.files)} />
+              <Button type="button" variant="secondary" onClick={() => fileRef.current?.click()}>
+                <Upload size={15} /> Upload logo
+              </Button>
+              {data.logo && data.logo !== DEFAULT_LOGO && (
+                <Button type="button" variant="ghost" onClick={() => setData({ ...data, logo: DEFAULT_LOGO })}>
+                  Use the Big Country logo
+                </Button>
+              )}
+              {data.logo && (
+                <Button type="button" variant="danger" onClick={() => setData({ ...data, logo: null })}>
+                  Remove logo
+                </Button>
+              )}
+            </div>
+            <p className="max-w-xs text-xs text-slate-500">A PNG with a transparent background looks best. Wide or square logos both work.</p>
+          </div>
+        </div>
+
+        {color('brandColor', 'Brand color', 'Buttons, links, highlights and the tech app header.')}
+        {color('accentColor', 'Accent color', 'Small highlights, like the selected menu item.')}
+        <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+          <span className="text-xs text-slate-500">Preview:</span>
+          <span className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white">Button</span>
+          <span className="rounded-md bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-700">Selected</span>
+          <span className="text-sm font-medium text-brand-600 underline">Link</span>
+          <span className="h-5 w-1 rounded-full bg-accent-500" />
+          <span className="text-xs font-semibold uppercase tracking-widest text-accent-500">Accent</span>
+          {(data.brandColor !== DEFAULT_BRAND.brandColor || data.accentColor !== DEFAULT_BRAND.accentColor) && (
+            <button type="button" className="ml-2 text-xs text-brand-600 hover:underline" onClick={() => setData({ ...data, ...DEFAULT_BRAND })}>
+              Reset to logo colors
+            </button>
+          )}
+        </div>
+
+        <div className="border-t border-slate-100 sm:col-span-2" />
         {field('name', 'Business name')}
         {field('phone', 'Phone')}
         {field('email', 'Email', 'email')}
@@ -148,7 +256,7 @@ function CompanyEditor() {
         {field('defaultTaxRate', 'Default tax %', 'number')}
         <div className="sm:col-span-2">
           <span className="label">Invoice footer</span>
-          <textarea className="input" rows={2} value={data.invoiceFooter} onChange={(e) => setData({ ...data, invoiceFooter: e.target.value })} />
+          <textarea id="company-footer" className="input" rows={2} value={data.invoiceFooter} onChange={(e) => setData({ ...data, invoiceFooter: e.target.value })} />
         </div>
         <div className="sm:col-span-2">
           <Button>Save</Button>

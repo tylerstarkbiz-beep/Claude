@@ -4,7 +4,6 @@ import clsx from 'clsx';
 import {
   CalendarDays,
   CircleUserRound,
-  ClipboardList,
   Clock,
   NotebookPen,
   Receipt,
@@ -20,7 +19,7 @@ import {
   Wrench,
   Zap,
 } from 'lucide-react';
-import { useApp } from '../store';
+import { logoMark, useApp } from '../store';
 import { post } from '../api';
 import { Avatar, divisionIcon } from './ui';
 import type { Board, Permission } from '../../shared/types';
@@ -57,12 +56,7 @@ export function Layout() {
 
   const sidebar = (
     <nav className="flex h-full flex-col gap-1 overflow-auto p-3 text-sm">
-      <div className="mb-3 flex items-center gap-2 px-2 py-1">
-        <div className="grid h-8 w-8 place-items-center rounded-lg bg-indigo-600 text-white">
-          <ClipboardList size={18} />
-        </div>
-        <span className="text-lg font-bold tracking-tight">FieldBoard</span>
-      </div>
+      <BrandLockup />
       {NAV.filter((n) => !n.perm || app.can(n.perm)).map(({ to, label, icon: Icon, end }) => (
         <NavLink
           key={to}
@@ -70,7 +64,12 @@ export function Layout() {
           end={end}
           onClick={() => setMobileOpen(false)}
           className={({ isActive }) =>
-            clsx('flex items-center gap-2.5 rounded-md px-2.5 py-2', isActive ? 'bg-indigo-50 font-medium text-indigo-700' : 'text-slate-600 hover:bg-slate-100')
+            clsx(
+              'relative flex items-center gap-2.5 rounded-md px-2.5 py-2',
+              isActive
+                ? 'bg-brand-50 font-medium text-brand-700 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-full before:bg-accent-500'
+                : 'text-slate-600 hover:bg-slate-100',
+            )
           }
         >
           <Icon size={17} /> {label}
@@ -107,7 +106,7 @@ export function Layout() {
             to={`/boards/${b.id}`}
             onClick={() => setMobileOpen(false)}
             className={({ isActive }) =>
-              clsx('flex items-center gap-2.5 rounded-md px-2.5 py-1.5', isActive ? 'bg-indigo-50 font-medium text-indigo-700' : 'text-slate-600 hover:bg-slate-100')
+              clsx('flex items-center gap-2.5 rounded-md px-2.5 py-1.5', isActive ? 'bg-brand-50 font-medium text-brand-700' : 'text-slate-600 hover:bg-slate-100')
             }
           >
             <LayoutGrid size={15} style={{ color: div?.color ?? '#64748b' }} />
@@ -137,7 +136,7 @@ export function Layout() {
             <Menu size={20} />
           </button>
           <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
-            <DivisionTab active={app.divisionId === null} onClick={() => app.setDivisionId(null)} color="#475569" label="All divisions" />
+            <DivisionTab active={app.divisionId === null} onClick={() => app.setDivisionId(null)} color="var(--brand)" label="All divisions" />
             {app.divisions.map((d) => {
               const Icon = divisionIcon(d.icon);
               return (
@@ -186,5 +185,26 @@ function DivisionTab({ active, onClick, color, label, icon }: { active: boolean;
       {icon}
       {label}
     </button>
+  );
+}
+
+/** Company badge + name, styled after the logo: bold name, small accent-colored tagline. */
+export function BrandLockup({ onDark }: { onDark?: boolean }) {
+  const { company } = useApp();
+  const mark = logoMark(company);
+  const words = company.name.split(' ');
+  const [main, rest] = [words.slice(0, 2).join(' '), words.slice(2).join(' ')];
+  return (
+    <div className="mb-3 flex items-center gap-2 px-1 py-1">
+      {mark ? (
+        <img src={mark} alt="" className={clsx('h-10 w-10 shrink-0 object-contain', onDark && 'rounded-full bg-white p-0.5')} />
+      ) : (
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand-600 font-bold text-white">{company.name.slice(0, 1)}</span>
+      )}
+      <div className="min-w-0 leading-tight">
+        <div className={clsx('truncate text-[17px] font-extrabold uppercase tracking-tight', onDark ? 'text-white' : 'text-brand-600')}>{main}</div>
+        {rest && <div className={clsx('text-[9px] font-semibold uppercase leading-snug tracking-[0.08em]', onDark ? 'text-white/80' : 'text-accent-500')}>{rest}</div>}
+      </div>
+    </div>
   );
 }

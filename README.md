@@ -27,6 +27,11 @@ FieldBoard puts both in one app and connects them with automations. It is built 
 | **Tech app** (`/tech`) | A phone app for the crew that installs to the home screen. It has a big clock-in button with a live timer, today's visits with Call and Directions, a job screen (start/stop the job timer, complete the job, job tasks, notes and photos), and **My Day** (checklist, tasks due, end-of-day report). |
 | **Automations** | "When X happens, do Y" rules that tie jobs to boards. For example: *when a Restoration job is created → create "Contact adjuster" task for the job's tech*, or *when an HVAC job is completed → create "Offer maintenance plan" follow-up*. Task titles support `{{job.number}}`, `{{job.title}}`, `{{client.name}}` and `{{task.title}}`. |
 
+**Branding.** The app ships branded for Big Country Cleanup & Restoration: the logo is in the sidebar, the tech app,
+invoices and the home-screen icon, and the colors come from it (navy `#184478`, red `#d93131`). Under
+**Settings → Company & branding** you can upload a different logo and change the brand and accent colors. Every
+screen picks them up, because the whole UI uses a `brand`/`accent` palette derived from those two colors.
+
 The app ships with realistic demo data for all four divisions so you can try everything right away.
 
 ## Running it

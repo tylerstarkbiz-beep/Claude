@@ -109,7 +109,7 @@ export function BoardPage() {
             <button
               key={v}
               onClick={() => setView(v)}
-              className={clsx('flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm', view === v ? 'bg-indigo-50 font-medium text-indigo-700' : 'text-slate-600')}
+              className={clsx('flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm', view === v ? 'bg-brand-50 font-medium text-brand-700' : 'text-slate-600')}
             >
               <Icon size={15} /> {label}
             </button>
@@ -122,7 +122,7 @@ export function BoardPage() {
         <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1">
           <span className="mr-1 text-xs text-slate-500">Person</span>
           {people.map((u) => (
-            <button key={u.id} onClick={() => setPerson(person === u.id ? null : u.id)} className={clsx('rounded-full', person === u.id ? 'ring-2 ring-indigo-500 ring-offset-1' : 'opacity-80')}>
+            <button key={u.id} onClick={() => setPerson(person === u.id ? null : u.id)} className={clsx('rounded-full', person === u.id ? 'ring-2 ring-brand-500 ring-offset-1' : 'opacity-80')}>
               <Avatar user={u} size={24} />
             </button>
           ))}
@@ -262,7 +262,7 @@ function GroupTable(p: GroupProps) {
           <div className={clsx(GRID)}>
             <div style={{ background: p.group.color, opacity: 0.4 }} />
             <input
-              className="h-9 px-3 text-sm outline-none placeholder:text-slate-400 focus:bg-indigo-50/40"
+              className="h-9 px-3 text-sm outline-none placeholder:text-slate-400 focus:bg-brand-50/40"
               placeholder="+ Add task"
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
@@ -322,9 +322,9 @@ function TaskRow({
         <button onClick={() => onOpen(task.id)} className={clsx('truncate text-left text-sm hover:underline', task.status === 'done' && 'text-slate-400')}>
           {task.title}
         </button>
-        <button onClick={() => onOpen(task.id)} className="ml-auto flex shrink-0 items-center gap-0.5 text-slate-300 hover:text-indigo-600" title="Updates">
+        <button onClick={() => onOpen(task.id)} className="ml-auto flex shrink-0 items-center gap-0.5 text-slate-300 hover:text-brand-600" title="Updates">
           <MessageSquare size={15} />
-          {!!task.updateCount && <span className="text-[10px] text-indigo-600">{task.updateCount}</span>}
+          {!!task.updateCount && <span className="text-[10px] text-brand-600">{task.updateCount}</span>}
         </button>
       </div>
       <div className="cell">
@@ -347,7 +347,7 @@ function TaskRow({
       </div>
       <div className="cell truncate px-2 text-xs">
         {job ? (
-          <Link to={`/jobs/${job.id}`} className="truncate rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 hover:bg-indigo-100" title={job.title}>
+          <Link to={`/jobs/${job.id}`} className="truncate rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 hover:bg-brand-100" title={job.title}>
             {job.number}
           </Link>
         ) : (
@@ -400,7 +400,7 @@ function Kanban({
         return (
           <div
             key={status}
-            className={clsx('w-72 shrink-0 rounded-lg bg-slate-100 p-2', over === status && 'ring-2 ring-indigo-400')}
+            className={clsx('w-72 shrink-0 rounded-lg bg-slate-100 p-2', over === status && 'ring-2 ring-brand-400')}
             onDragOver={(e) => (e.preventDefault(), setOver(status))}
             onDragLeave={() => setOver(null)}
             onDrop={(e) => {

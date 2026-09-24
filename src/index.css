@@ -4,6 +4,29 @@
 
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Brand palette derived from one color (set at runtime from company settings as --brand).
+     600 is the brand color itself; lighter steps mix toward white, darker toward black. */
+  --color-brand-50: color-mix(in oklab, var(--brand) 7%, white);
+  --color-brand-100: color-mix(in oklab, var(--brand) 14%, white);
+  --color-brand-200: color-mix(in oklab, var(--brand) 28%, white);
+  --color-brand-300: color-mix(in oklab, var(--brand) 45%, white);
+  --color-brand-400: color-mix(in oklab, var(--brand) 68%, white);
+  --color-brand-500: color-mix(in oklab, var(--brand) 85%, white);
+  --color-brand-600: var(--brand);
+  --color-brand-700: color-mix(in oklab, var(--brand) 84%, black);
+  --color-brand-800: color-mix(in oklab, var(--brand) 68%, black);
+  --color-brand-900: color-mix(in oklab, var(--brand) 52%, black);
+
+  --color-accent-50: color-mix(in oklab, var(--accent) 8%, white);
+  --color-accent-500: var(--accent);
+  --color-accent-600: color-mix(in oklab, var(--accent) 88%, black);
+}
+
+/* Logo colors until company settings load (and in case they never do). */
+:root {
+  --brand: #184478;
+  --accent: #d93131;
 }
 
 html, body, #root { height: 100%; }
@@ -12,7 +35,7 @@ body { color: #1e293b; }
 /* Shared component classes. Kept in the components layer so utilities (e.g. pl-8) can override them. */
 @layer components {
   .cell { @apply flex h-9 items-center justify-center border-l border-slate-200 text-sm; }
-  .input { @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100; }
+  .input { @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100; }
   .label { @apply mb-1 block text-xs font-medium text-slate-500; }
   .card { @apply rounded-xl border border-slate-200 bg-white shadow-sm; }
 }

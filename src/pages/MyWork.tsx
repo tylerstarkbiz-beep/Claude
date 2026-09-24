@@ -86,7 +86,7 @@ export function MyWork() {
                       <button onClick={() => setOpenTask(t.id)} className="min-w-0 flex-1 truncate text-left font-medium hover:underline">
                         {t.title}
                       </button>
-                      <Link to={`/boards/${t.boardId}`} className="hidden shrink-0 text-xs text-slate-400 hover:text-indigo-600 sm:block">
+                      <Link to={`/boards/${t.boardId}`} className="hidden shrink-0 text-xs text-slate-400 hover:text-brand-600 sm:block">
                         {board?.name}
                       </Link>
                       <span className={clsx('w-14 shrink-0 text-right text-xs', b === 'Overdue' ? 'text-rose-600' : 'text-slate-500')}>{shortDate(t.dueDate)}</span>

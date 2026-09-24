@@ -70,7 +70,7 @@ export function Schedule() {
           {days.map((d) => {
             const iso = localDate(d);
             return (
-              <div key={iso} className={clsx('border-b border-l border-slate-200 px-2 py-2 text-center text-xs', iso === today && 'bg-indigo-50 font-semibold text-indigo-700')}>
+              <div key={iso} className={clsx('border-b border-l border-slate-200 px-2 py-2 text-center text-xs', iso === today && 'bg-brand-50 font-semibold text-brand-700')}>
                 {d.toLocaleDateString('en-US', { weekday: 'short' })} <span className="text-base">{d.getDate()}</span>
               </div>
             );
@@ -88,7 +88,7 @@ export function Schedule() {
                   .filter((j) => j.assigneeId === id && j.scheduledStart?.slice(0, 10) === iso)
                   .sort((a, b) => (a.scheduledStart ?? '').localeCompare(b.scheduledStart ?? ''));
                 return (
-                  <div key={iso} className={clsx('min-h-16 space-y-1 border-b border-l border-slate-100 p-1', iso === today && 'bg-indigo-50/40')}>
+                  <div key={iso} className={clsx('min-h-16 space-y-1 border-b border-l border-slate-100 p-1', iso === today && 'bg-brand-50/40')}>
                     {cellJobs.map((j) => {
                       const div = app.division(j.divisionId);
                       return (

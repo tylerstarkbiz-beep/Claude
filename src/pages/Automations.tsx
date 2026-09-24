@@ -72,7 +72,7 @@ export function Automations() {
         <div className="space-y-3">
           {rules.map((r) => (
             <div key={r.id} className={clsx('card flex items-start gap-4 p-4', !r.enabled && 'opacity-60')}>
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-indigo-100 text-indigo-600">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-100 text-brand-600">
                 <Zap size={18} />
               </div>
               <button className="min-w-0 flex-1 text-left" onClick={() => setEditing(r)}>

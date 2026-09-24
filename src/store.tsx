@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api } from './api';
-import { userCan, type Board, type Division, type Permission, type User } from '../shared/types';
+import { userCan, type Board, type CompanySettings, type Division, type Permission, type User } from '../shared/types';
+import { DEFAULT_BRAND, DEFAULT_LOGO, DEFAULT_MARK } from '../shared/brand';
 
 interface Toast {
   id: number;
@@ -9,6 +10,8 @@ interface Toast {
 }
 
 interface AppState {
+  /** Company name, logo and colors (from Settings). */
+  company: CompanySettings;
   divisions: Division[];
   /** Everyone, including inactive members (for names on history). */
   users: User[];
@@ -33,6 +36,21 @@ interface AppState {
 
 const Ctx = createContext<AppState | null>(null);
 
+const FALLBACK_COMPANY: CompanySettings = {
+  name: 'Big Country Cleanup & Restoration',
+  phone: '',
+  email: '',
+  address: '',
+  paymentTermsDays: 30,
+  defaultTaxRate: 0,
+  invoiceFooter: '',
+  logo: DEFAULT_LOGO,
+  ...DEFAULT_BRAND,
+};
+
+/** Small square badge for the sidebar/app header: the bundled badge when the logo is the default, else the logo itself. */
+export const logoMark = (company: CompanySettings) => (company.logo === DEFAULT_LOGO ? DEFAULT_MARK : company.logo);
+
 function stored(key: string): number | null {
   try {
     const v = localStorage.getItem(key);
@@ -55,13 +73,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [divisions, setDivisions] = useState<Division[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [boards, setBoards] = useState<Board[]>([]);
+  const [company, setCompany] = useState<CompanySettings | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [divisionId, setDivisionIdState] = useState<number | null>(() => stored('fb.division'));
   const [currentUserId, setCurrentUserIdState] = useState<number | null>(() => stored('fb.user'));
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const reload = useCallback(async () => {
-    const data = await api<{ divisions: Division[]; users: User[]; boards: Board[] }>('/bootstrap');
+    const data = await api<{ divisions: Division[]; users: User[]; boards: Board[]; company: CompanySettings }>('/bootstrap');
+    setCompany(data.company);
     setDivisions(data.divisions);
     setUsers(data.users);
     setBoards(data.boards);
@@ -74,6 +94,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reload();
   }, [reload]);
 
+  // Apply the company's colors to the whole UI (the brand-* / accent-* palettes read these) and name the tab.
+  useEffect(() => {
+    if (!company) return;
+    const root = document.documentElement.style;
+    root.setProperty('--brand', company.brandColor);
+    root.setProperty('--accent', company.accentColor);
+    document.title = company.name;
+  }, [company]);
+
   const toast = useCallback((message: string, kind: Toast['kind'] = 'info') => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, message, kind }]);
@@ -82,6 +111,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppState>(
     () => ({
+      company: company ?? { ...FALLBACK_COMPANY },
       divisions,
       users,
       activeUsers: users.filter((u) => u.active),
@@ -97,10 +127,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toast,
       announce: (result) => result.automations?.forEach((m) => toast(m, 'automation')),
     }),
-    [divisions, users, boards, reload, divisionId, currentUserId, toast],
+    [company, divisions, users, boards, reload, divisionId, currentUserId, toast],
   );
 
-  if (!loaded) return <div className="grid h-full place-items-center text-slate-400">Loading…</div>;
+  if (!loaded)
+    return (
+      <div className="grid h-full place-items-center bg-white">
+        <img src={DEFAULT_LOGO} alt="" className="w-56 max-w-[70%] animate-pulse" />
+      </div>
+    );
 
   return (
     <Ctx.Provider value={value}>
@@ -114,7 +149,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               (t.kind === 'error'
                 ? 'bg-rose-600 text-white'
                 : t.kind === 'automation'
-                  ? 'bg-indigo-600 text-white'
+                  ? 'bg-brand-600 text-white'
                   : 'bg-slate-900 text-white')
             }
           >

@@ -56,7 +56,7 @@ export function Timesheets() {
             <tr>
               <th className="px-4 py-3 text-left">Employee</th>
               {days.map((d) => (
-                <th key={d} className={clsx('px-2 py-3 text-center', d === today && 'text-indigo-700')}>
+                <th key={d} className={clsx('px-2 py-3 text-center', d === today && 'text-brand-700')}>
                   {new Date(d + 'T00:00').toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}
                 </th>
               ))}
@@ -76,10 +76,10 @@ export function Timesheets() {
                 {days.map((d) => {
                   const m = sheet?.days[d] ?? 0;
                   return (
-                    <td key={d} className={clsx('px-1 py-1 text-center', d === today && 'bg-indigo-50/50')}>
+                    <td key={d} className={clsx('px-1 py-1 text-center', d === today && 'bg-brand-50/50')}>
                       <Link
                         to={`/daily/${user.id}/${d}`}
-                        className={clsx('block rounded px-2 py-1.5 hover:bg-indigo-50', m ? 'font-medium' : 'text-slate-300', m > 600 && 'text-amber-600')}
+                        className={clsx('block rounded px-2 py-1.5 hover:bg-brand-50', m ? 'font-medium' : 'text-slate-300', m > 600 && 'text-amber-600')}
                         title="Open daily log"
                       >
                         {m ? hm(m) : '—'}

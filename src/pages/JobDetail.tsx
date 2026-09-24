@@ -84,18 +84,18 @@ export function JobDetailPage() {
             <div className="grid gap-5 sm:grid-cols-2">
               <div>
                 <span className="label">Client</span>
-                <Link to={`/clients/${job.client.id}`} className="font-medium hover:text-indigo-600">
+                <Link to={`/clients/${job.client.id}`} className="font-medium hover:text-brand-600">
                   {job.client.name}
                 </Link>
                 {job.client.company && <div className="text-sm text-slate-500">{job.client.company}</div>}
                 <div className="mt-2 space-y-1 text-sm text-slate-600">
                   {job.client.phone && (
-                    <a href={`tel:${job.client.phone}`} className="flex items-center gap-1.5 hover:text-indigo-600">
+                    <a href={`tel:${job.client.phone}`} className="flex items-center gap-1.5 hover:text-brand-600">
                       <Phone size={13} /> {job.client.phone}
                     </a>
                   )}
                   {job.client.email && (
-                    <a href={`mailto:${job.client.email}`} className="flex items-center gap-1.5 hover:text-indigo-600">
+                    <a href={`mailto:${job.client.email}`} className="flex items-center gap-1.5 hover:text-brand-600">
                       <Mail size={13} /> {job.client.email}
                     </a>
                   )}
@@ -109,7 +109,7 @@ export function JobDetailPage() {
                     href={`https://maps.google.com/?q=${encodeURIComponent(job.address)}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-1 inline-flex items-center gap-1 text-xs text-indigo-600"
+                    className="mt-1 inline-flex items-center gap-1 text-xs text-brand-600"
                   >
                     <MapPin size={12} /> Directions
                   </a>
@@ -190,7 +190,7 @@ export function JobDetailPage() {
             <div className="space-y-3">
               {job.activity.map((a) => (
                 <div key={a.id} className="text-sm">
-                  <div className={clsx(a.kind === 'automation' && 'text-indigo-700', a.kind === 'automation_error' && 'text-rose-600')}>{a.message}</div>
+                  <div className={clsx(a.kind === 'automation' && 'text-brand-700', a.kind === 'automation_error' && 'text-rose-600')}>{a.message}</div>
                   <div className="text-xs text-slate-400">{relative(a.createdAt)}</div>
                 </div>
               ))}

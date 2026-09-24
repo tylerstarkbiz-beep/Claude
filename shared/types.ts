@@ -448,6 +448,11 @@ export interface CompanySettings {
   /** Default sales tax % for new invoices. */
   defaultTaxRate: number;
   invoiceFooter: string;
+  /** Logo as a data URL (PNG/JPEG/WebP), shown in the app and on invoices; null for none. */
+  logo: string | null;
+  /** Main brand color (buttons, links, highlights) and accent color, as #rrggbb. */
+  brandColor: string;
+  accentColor: string;
 }
 
 // ---------- Job costing ----------

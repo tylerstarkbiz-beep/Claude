@@ -1,15 +1,14 @@
 {
-  "name": "FieldBoard Tech",
-  "short_name": "FieldBoard",
+  "name": "Big Country Tech",
+  "short_name": "Big Country",
   "description": "Clock in, see today's jobs, add notes and photos, and log your day.",
   "start_url": "/tech",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#4338ca",
+  "background_color": "#ffffff",
+  "theme_color": "#184478",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
   ]
 }

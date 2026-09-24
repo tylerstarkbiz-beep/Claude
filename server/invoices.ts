@@ -5,19 +5,26 @@ import { logActivity, tx, type DB } from './db.ts';
 import { h, id, optNum, patch, required } from './http.ts';
 import { setJobStatus } from './automations.ts';
 import { HttpError, getClient, getJob, localDate, mapLineItem } from './repo.ts';
+import { DEFAULT_BRAND, DEFAULT_LOGO } from '../shared/brand.ts';
 import { PAYMENT_METHODS, type CompanySettings, type Invoice, type InvoiceDetail, type InvoiceItem, type Payment } from '../shared/types.ts';
 
 type Row = Record<string, any>;
 
 const DEFAULT_COMPANY: CompanySettings = {
-  name: 'Your Company',
+  name: 'Big Country Cleanup & Restoration',
   phone: '',
   email: '',
   address: '',
   paymentTermsDays: 30,
   defaultTaxRate: 0,
   invoiceFooter: 'Thank you for your business!',
+  logo: DEFAULT_LOGO,
+  ...DEFAULT_BRAND,
 };
+
+const HEX = /^#[0-9a-f]{6}$/i;
+const LOGO = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+const MAX_LOGO_CHARS = 2_000_000; // ~1.5 MB image
 
 export function getCompany(db: DB): CompanySettings {
   const row = db.prepare("SELECT value FROM settings WHERE key = 'company'").get();
@@ -111,6 +118,11 @@ export function createInvoicesApi(db: DB): Router {
     '/settings/company',
     h((req) => {
       const merged = { ...getCompany(db), ...req.body };
+      if (!HEX.test(merged.brandColor) || !HEX.test(merged.accentColor)) throw new HttpError(400, 'Colors must be hex values like #184478');
+      if (merged.logo !== null && (typeof merged.logo !== 'string' || !LOGO.test(merged.logo))) {
+        throw new HttpError(400, 'Logo must be a PNG, JPEG or WebP image');
+      }
+      if (merged.logo && merged.logo.length > MAX_LOGO_CHARS) throw new HttpError(413, 'Logo image is too large (max 1.5 MB)');
       merged.paymentTermsDays = Math.max(0, Number(merged.paymentTermsDays) || 0);
       merged.defaultTaxRate = Math.max(0, Number(merged.defaultTaxRate) || 0);
       db.prepare("INSERT INTO settings (key, value) VALUES ('company', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value").run(

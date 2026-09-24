@@ -89,7 +89,7 @@ export function TechJob() {
         ) : (
           <button
             onClick={() => confirm('Mark this job complete?') && setStatus('completed')}
-            className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 py-4 font-semibold text-white"
+            className="flex items-center justify-center gap-2 rounded-xl bg-brand-600 py-4 font-semibold text-white"
           >
             <CheckCircle2 size={18} /> Complete job
           </button>

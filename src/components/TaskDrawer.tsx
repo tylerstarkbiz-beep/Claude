@@ -111,7 +111,7 @@ export function TaskDrawer({ taskId, onClose, onChanged }: { taskId: number; onC
             ))}
           </select>
           {job && (
-            <Link to={`/jobs/${job.id}`} onClick={onClose} className="text-indigo-600 hover:text-indigo-800" title="Open job">
+            <Link to={`/jobs/${job.id}`} onClick={onClose} className="text-brand-600 hover:text-brand-800" title="Open job">
               <ExternalLink size={16} />
             </Link>
           )}

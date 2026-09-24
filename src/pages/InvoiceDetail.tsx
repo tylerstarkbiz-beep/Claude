@@ -53,7 +53,7 @@ export function InvoiceDetailPage() {
           <h1 className="font-mono text-2xl font-bold">{inv.number}</h1>
           <Pill label={badge.label} color={badge.color} />
           {inv.job && (
-            <Link to={`/jobs/${inv.job.id}`} className="text-sm text-indigo-600 hover:underline">
+            <Link to={`/jobs/${inv.job.id}`} className="text-sm text-brand-600 hover:underline">
               {inv.job.number}
             </Link>
           )}

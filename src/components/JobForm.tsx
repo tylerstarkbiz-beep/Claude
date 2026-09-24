@@ -83,7 +83,7 @@ export function JobForm({ onClose, clientId, divisionId }: { onClose: () => void
                 <input className="input" placeholder="Phone" value={newClient.phone} onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })} />
                 <input className="input" placeholder="Email" value={newClient.email} onChange={(e) => setNewClient({ ...newClient, email: e.target.value })} />
                 <input className="input" placeholder="Address" value={newClient.address} onChange={(e) => setNewClient({ ...newClient, address: e.target.value })} />
-                <button type="button" className="text-xs text-indigo-600" onClick={() => setNewClient(null)}>
+                <button type="button" className="text-xs text-brand-600" onClick={() => setNewClient(null)}>
                   Choose existing client instead
                 </button>
               </div>
@@ -98,7 +98,7 @@ export function JobForm({ onClose, clientId, divisionId }: { onClose: () => void
                     </option>
                   ))}
                 </select>
-                <button type="button" className="mt-1 text-xs text-indigo-600" onClick={() => setNewClient({ name: '', phone: '', email: '', address: '' })}>
+                <button type="button" className="mt-1 text-xs text-brand-600" onClick={() => setNewClient({ name: '', phone: '', email: '', address: '' })}>
                   + New client
                 </button>
               </>

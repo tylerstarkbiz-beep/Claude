@@ -3,6 +3,7 @@ import { assertOneOf, h, id, optNum, patch, required } from './http.ts';
 import { logActivity, tx, type DB } from './db.ts';
 import { onJobStatusChanged, runAutomations, syncCompletedAt } from './automations.ts';
 import { profitRows } from './costing.ts';
+import { getCompany } from './invoices.ts';
 import {
   HttpError,
   JOB_SELECT,
@@ -45,6 +46,7 @@ export function createApi(db: DB): Router {
       divisions: db.prepare('SELECT * FROM divisions ORDER BY id').all().map(mapDivision),
       users: db.prepare('SELECT * FROM users ORDER BY name').all().map(mapUser),
       boards: db.prepare('SELECT * FROM boards ORDER BY division_id IS NULL, division_id, name').all().map(mapBoard),
+      company: getCompany(db),
     })),
   );
 

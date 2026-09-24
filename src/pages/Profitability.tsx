@@ -91,7 +91,7 @@ export function Profitability() {
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap rounded-lg border border-slate-200 bg-white p-0.5">
           {PERIODS.map(([p, label]) => (
-            <button key={p} onClick={() => setPeriod(p)} className={clsx('rounded-md px-3 py-1.5 text-sm', period === p ? 'bg-indigo-50 font-medium text-indigo-700' : 'text-slate-600')}>
+            <button key={p} onClick={() => setPeriod(p)} className={clsx('rounded-md px-3 py-1.5 text-sm', period === p ? 'bg-brand-50 font-medium text-brand-700' : 'text-slate-600')}>
               {label}
             </button>
           ))}

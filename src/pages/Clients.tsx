@@ -49,7 +49,7 @@ export function Clients() {
               {clients.map((c) => (
                 <tr key={c.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                   <td className="px-4 py-3">
-                    <Link to={`/clients/${c.id}`} className="font-medium hover:text-indigo-600">
+                    <Link to={`/clients/${c.id}`} className="font-medium hover:text-brand-600">
                       {c.name}
                     </Link>
                     {c.company && <div className="text-xs text-slate-500">{c.company}</div>}

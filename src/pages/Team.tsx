@@ -96,7 +96,7 @@ export function Team() {
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
                     {u.permissions.length === PERMISSIONS.length ? (
-                      <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-700">Full access</span>
+                      <span className="rounded bg-brand-50 px-1.5 py-0.5 text-xs text-brand-700">Full access</span>
                     ) : u.permissions.length ? (
                       u.permissions.map((p) => (
                         <span key={p} className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
@@ -114,7 +114,7 @@ export function Team() {
         </table>
       </div>
       {inactive > 0 && (
-        <button className="mt-3 text-sm text-indigo-600" onClick={() => setShowInactive(!showInactive)}>
+        <button className="mt-3 text-sm text-brand-600" onClick={() => setShowInactive(!showInactive)}>
           {showInactive ? 'Hide' : 'Show'} {inactive} inactive member{inactive > 1 ? 's' : ''}
         </button>
       )}
@@ -198,7 +198,7 @@ function MemberDrawer({ member, onClose }: { member: Draft; onClose: () => void 
                   type="button"
                   key={r.value}
                   onClick={() => setD((cur) => ({ ...cur, role: r.value, permissions: [...ROLE_DEFAULTS[r.value]] }))}
-                  className={clsx('rounded-full border px-3 py-1.5 text-sm', d.role === r.value ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300')}
+                  className={clsx('rounded-full border px-3 py-1.5 text-sm', d.role === r.value ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300')}
                 >
                   {r.label}
                 </button>
@@ -211,7 +211,7 @@ function MemberDrawer({ member, onClose }: { member: Draft; onClose: () => void 
             <div className="mb-1 flex items-center justify-between">
               <span className="label mb-0">Permissions</span>
               {!matchesRole && (
-                <button type="button" className="flex items-center gap-1 text-xs text-indigo-600" onClick={() => set('permissions', [...ROLE_DEFAULTS[d.role]])}>
+                <button type="button" className="flex items-center gap-1 text-xs text-brand-600" onClick={() => set('permissions', [...ROLE_DEFAULTS[d.role]])}>
                   <RotateCcw size={12} /> Reset to {d.role} defaults
                 </button>
               )}
@@ -222,7 +222,7 @@ function MemberDrawer({ member, onClose }: { member: Draft; onClose: () => void 
                 return (
                   <button type="button" key={p} onClick={() => togglePerm(p)} className="flex w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-slate-50">
                     <span
-                      className={clsx('mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded border-2', on ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300')}
+                      className={clsx('mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded border-2', on ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300')}
                     >
                       {on && <Check size={13} strokeWidth={3} />}
                     </span>

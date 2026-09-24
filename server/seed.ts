@@ -474,11 +474,12 @@ function seedFieldData(db: DB, ids: { userIds: Record<string, number>; jobIds: R
   const { userIds, jobIds, divisionIds } = ids;
   const users = db.prepare('SELECT id, role, division_ids FROM users').all() as { id: number; role: string; division_ids: string }[];
 
+  // Contact details are placeholders to fill in under Settings; logo and colors come from the defaults.
   db.prepare("INSERT INTO settings (key, value) VALUES ('company', ?)").run(
     JSON.stringify({
-      name: 'Summit Property Services',
+      name: 'Big Country Cleanup & Restoration',
       phone: '(555) 400-2000',
-      email: 'office@summitservices.example.com',
+      email: 'office@example.com',
       address: '1200 Industrial Way, Suite 4',
       paymentTermsDays: 30,
       defaultTaxRate: 0,
@@ -540,8 +541,11 @@ function seedFieldData(db: DB, ids: { userIds: Record<string, number>; jobIds: R
 
   // Today: a few people are on the clock right now.
   const now = new Date();
+  // "N minutes ago", but never before midnight: just after midnight these would otherwise land on yesterday.
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
   const ago = (mins: number) => {
-    const d = new Date(now.getTime() - mins * 60000);
+    const d = new Date(Math.max(now.getTime() - mins * 60000, midnight.getTime() + (200 - mins) * 1000));
     const p = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`;
   };
