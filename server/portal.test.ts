@@ -12,6 +12,9 @@ async function signIn(call: Awaited<ReturnType<typeof setup>>['call'], clientId:
   return { session: res.data.session as string, token: token! };
 }
 
+// 1x1 PNG standing in for a drawn signature
+const SIG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
 const clientId = (db: any, name: string) => (db.prepare('SELECT id FROM clients WHERE name = ?').get(name) as { id: number }).id;
 
 test('a new client automatically gets a portal invite; links are single-use; logout ends the session', async () => {
@@ -78,8 +81,10 @@ test('portal requests become jobs and run automations; estimates can be approved
   assert.ok(task, 'the "new restoration loss" automation ran');
 
   const quote = (await call('GET', '/portal/jobs', undefined, session)).data.find((j: any) => j.status === 'quoted');
-  const approved = await call('POST', `/portal/estimates/${quote.id}/approve`, undefined, session);
+  assert.equal((await call('POST', `/portal/estimates/${quote.id}/approve`, {}, session)).status, 400, 'a signature is required');
+  const approved = await call('POST', `/portal/estimates/${quote.id}/approve`, { signatureName: 'David Wells', signature: SIG }, session);
   assert.ok(approved.data.approvedAt);
+  assert.equal(approved.data.signature.name, 'David Wells');
   await call('POST', `/portal/estimates/${quote.id}/changes`, { message: 'Can you start next week?' }, session);
   const note = db.prepare('SELECT body FROM job_notes WHERE job_id = ? ORDER BY id DESC').get(quote.id) as { body: string };
   assert.match(note.body, /From David & Karen Wells \(portal\): Can you start next week\?/);
@@ -221,4 +226,33 @@ test('office can charge a saved card; card payments are off without Stripe keys'
   assert.deepEqual((await off.call('GET', '/portal/cards', undefined, s2.session)).data, []);
   assert.equal((await off.call('POST', '/portal/cards/setup', undefined, s2.session)).status, 503);
   off.close();
+});
+
+test('approving takes a 25% deposit; paying it does not close the job; the final invoice credits it', async () => {
+  const { call, db, jobId, close } = await setup();
+  const wells = clientId(db, 'David & Karen Wells');
+  const { session } = await signIn(call, wells);
+  const heatPump = jobId('Heat pump replacement'); // $11,475 estimate
+  const res = await call('POST', `/portal/estimates/${heatPump}/approve`, { signatureName: 'Karen Wells', signature: SIG }, session);
+  assert.equal(res.data.deposit.amount, 2868.75);
+  assert.equal(res.data.deposit.status, 'sent');
+  assert.equal((await call('POST', `/portal/estimates/${heatPump}/approve`, { signatureName: 'Karen Wells', signature: SIG }, session)).status, 409, 'only once');
+
+  const { data: estimate } = await call('GET', `/jobs/${heatPump}/estimate`);
+  assert.equal(estimate.signature.name, 'Karen Wells');
+  assert.equal(estimate.signature.total, 11475);
+
+  await call('POST', `/invoices/${res.data.deposit.invoiceId}/payments`, { amount: 2868.75, method: 'Check' });
+  assert.equal((await call('GET', `/jobs/${heatPump}`)).data.status, 'quoted', 'a deposit does not mark the job paid');
+
+  const { data: final } = await call('POST', '/invoices', { jobId: heatPump });
+  assert.ok(final.items.some((i: any) => i.description.startsWith('Less deposit paid') && i.unitPrice === -2868.75));
+  assert.equal(final.total, 11475 - 2868.75);
+
+  // A per-job override of 0% means no deposit.
+  const estate = jobId('Estate cleanout — whole house');
+  await call('PATCH', `/jobs/${estate}`, { depositPercent: 0 });
+  const r2 = await call('POST', `/portal/estimates/${estate}/approve`, { signatureName: 'Karen Wells', signature: SIG }, session);
+  assert.equal(r2.data.deposit, null);
+  close();
 });

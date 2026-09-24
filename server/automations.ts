@@ -103,6 +103,8 @@ export function syncCompletedAt(db: DB, jobId: number, status: JobStatus) {
 /** Log a job's status change and run matching automations. Call after the row is updated. */
 export function onJobStatusChanged(db: DB, before: Job, after: Job): string[] {
   syncCompletedAt(db, after.id, after.status);
+  // A fresh estimate starts a fresh round of daily follow-ups.
+  if (after.status === 'quoted') db.prepare('UPDATE jobs SET quoted_at = ?, followup_count = 0, last_followup_on = NULL WHERE id = ?').run(localDateTime(), after.id);
   after = getJob(db, after.id)!;
   logActivity(db, 'job', `${after.number} moved from ${JOB_STATUS_META[before.status].label} to ${JOB_STATUS_META[after.status].label}`, {
     jobId: after.id,

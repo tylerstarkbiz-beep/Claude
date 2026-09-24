@@ -25,6 +25,9 @@ FieldBoard puts both in one app and connects them with automations. It is built 
 | **Job notes & photos** | Notes with any number of photos, taken from a phone camera or uploaded. Photos are resized on the device, so uploads work on a weak signal. They show on the job, in the tech app, and on the author's daily log. |
 | **Invoicing** | Create an invoice from a job (its line items are copied), edit lines, tax, due date and message, mark it sent, record full or partial payments (card, check, cash, ACH, insurance), void it, and print or save a PDF. Each invoice has a **client link** (`/pay/…`) with a clean invoice page. Sending moves the job to Invoiced, and full payment moves it to Paid, which runs your automations. |
 | **Tech app** (`/tech`) | A phone app for the crew that installs to the home screen. It has a big clock-in button with a live timer, today's visits with Call and Directions, a job screen (start/stop the job timer, complete the job, job tasks, notes and photos), and **My Day** (checklist, tasks due, end-of-day report). |
+| **Customer portal** (`/portal`) | Every new client gets a portal automatically. If they have an email, an invite with a single-use sign-in link goes out; there are no passwords. Clients see their requests (and submit new ones, which run your automations), **approve and sign estimates** with a drawn signature, **pay deposits**, and see upcoming and past visits and invoices. They can also save a card and pay online. On the client page the office can view the portal as the client, copy a sign-in link, re-send the invite or turn the portal off. |
+| **Texting** | **Call** and **Text** buttons on every job (Call opens the phone's dialer). Ready-made texts for booking confirmations, request received, and estimate ready (with a link to approve), plus custom messages. **Automatic:** a **24-hour reminder** before each scheduled job, and a **daily follow-up** at 10am on estimates awaiting approval for up to N days, stopping when approved. Texts only go out 8am–8pm and respect a per-client opt-out. |
+| **Deposits** | A default deposit % (Settings) with a per-estimate override. When a client signs, a deposit invoice is created for them to pay. A paid deposit is subtracted automatically on the final invoice. |
 | **Automations** | "When X happens, do Y" rules that tie jobs to boards. For example: *when a Restoration job is created → create "Contact adjuster" task for the job's tech*, or *when an HVAC job is completed → create "Offer maintenance plan" follow-up*. Task titles support `{{job.number}}`, `{{job.title}}`, `{{client.name}}` and `{{task.title}}`. |
 
 **Branding.** The app ships branded for Big Country Cleanup & Restoration: the logo is in the sidebar, the tech app,
@@ -59,6 +62,18 @@ npm run seed       # wipe the database and reload demo data
 npm run build:demo # one self-contained HTML file (app + sample data, runs in the browser) in dist-demo/
 ```
 
+### Connecting outside services
+
+These are all optional. Until each is connected, the app still works: messages wait in **Settings → Messages outbox**
+with copyable links, and online card payment shows as "not available yet". Set these as environment variables on the server:
+
+| Service | Variables | Used for |
+| --- | --- | --- |
+| Public address | `PUBLIC_URL` (e.g. `https://app.bigcountry.com`) | Links in emails and texts |
+| Twilio | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | Text messages. US business texting also needs A2P 10DLC registration in Twilio. |
+| SendGrid | `SENDGRID_API_KEY`, `MAIL_FROM` | Portal invites and sign-in emails |
+| Stripe | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` | Saved cards, online invoice and deposit payments, "Charge card on file" |
+
 The database lives at `data/fieldboard.db` (set `DB_PATH` to move it), and photos in `data/uploads` (`UPLOAD_DIR`). Delete the file to start fresh; demo data is
 seeded automatically when the database is empty.
 
@@ -75,11 +90,15 @@ server/notes.ts        Job notes + photo uploads (stored in data/uploads)
 server/invoices.ts     Invoices, payments, client links, company settings
 server/team.ts         Team members, hourly rates, permissions
 server/costing.ts      Job costing and the profitability report
+server/portal.ts       Customer portal: sign-in links, sessions, client-scoped data, signatures
+server/texting.ts      Text wording, office texts, and the reminder / follow-up scheduler
+server/stripe.ts       Stripe (saved cards, payments); server/mailer.ts: email + text outbox
 server/seed.ts         Demo data
 server/*.test.ts       Tests
 src/                   React + Tailwind web app (Vite)
   pages/               Office screens: Dashboard, Jobs, Daily Logs, Timesheets, Invoices, Boards, Settings…
   tech/                Phone app for field techs (/tech)
+  portal/              Customer portal (/portal)
   components/          Layout, TaskDrawer, JobForm, shared UI
 ```
 
@@ -97,8 +116,8 @@ order:
    but the server doesn't check who is asking until there are real logins. Photo and invoice links are also unauthenticated.
 2. **Hosting.** Run it on a server with HTTPS (needed for phone installs and camera access), backups, and Postgres plus
    cloud photo storage once multiple offices use it.
-3. **Sending invoices and taking payments.** Email/text the client link (SendGrid/Twilio) and pay by card/ACH via Stripe.
-   Today you copy the link and record payments by hand.
+3. **Connect Twilio, SendGrid and Stripe** (see above) and test each with real accounts. The payment code is tested
+   against a simulated Stripe, not the real one. Add a Stripe webhook so payments settle even if the client closes the page.
 4. **Offline mode for techs.** Queue clock-ins, notes and photos with no signal and sync later. The app shell loads
    offline today, but data doesn't.
 5. **Payroll.** Overtime rules, timesheet approval, and a QuickBooks/payroll export. Also receipt photos on job costs.

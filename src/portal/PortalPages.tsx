@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { CalendarDays, Check, CheckCircle2, ChevronRight, CreditCard, Loader2, MapPin, MessageSquare, Plus, Trash2 } from 'lucide-react';
 import { money, shortDate, time, todayISO } from '../format';
-import { Button, EmptyState } from '../components/ui';
+import { Button, EmptyState, Modal } from '../components/ui';
+import { SignaturePad, type SignaturePadHandle } from './SignaturePad';
 import { InvoiceDocument } from '../components/InvoiceDocument';
 import type { CompanySettings, InvoiceDetail, JobStatus, LineItem } from '../../shared/types';
 import { papi, usePortal } from './session';
@@ -23,6 +24,9 @@ interface PortalJob {
   division: { name: string; color: string };
   tech: { firstName: string; color: string } | null;
   approvedAt: string | null;
+  depositPercent: number;
+  signature: { name: string; signedAt: string } | null;
+  deposit: { invoiceId: number; number: string; amount: number; balance: number; status: string } | null;
   lineItems: LineItem[];
   createdAt: string;
 }
@@ -243,18 +247,10 @@ export function EstimatesPage() {
   const { toast } = usePortalApp();
   const { data: jobs, reload } = usePortal<PortalJob[]>('/portal/jobs');
   const [asking, setAsking] = useState<number | null>(null);
+  const [signing, setSigning] = useState<PortalJob | null>(null);
   const [message, setMessage] = useState('');
   const estimates = (jobs ?? []).filter((j) => j.status === 'quoted');
 
-  async function approve(j: PortalJob) {
-    try {
-      await papi(`/portal/estimates/${j.id}/approve`, { method: 'POST' });
-      toast("Estimate approved. We'll contact you to schedule the work.");
-      reload();
-    } catch (e) {
-      toast((e as Error).message, true);
-    }
-  }
   async function askChanges(j: PortalJob) {
     if (!message.trim()) return;
     await papi(`/portal/estimates/${j.id}/changes`, { method: 'POST', body: { message } });
@@ -285,6 +281,11 @@ export function EstimatesPage() {
                 <div className="text-right">
                   <div className="text-xs text-slate-500">Estimate total</div>
                   <div className="text-2xl font-bold">{money(j.total)}</div>
+                  {!j.approvedAt && j.depositPercent > 0 && (
+                    <div className="text-xs text-slate-500">
+                      {j.depositPercent}% deposit ({money((j.total * j.depositPercent) / 100)}) due on approval
+                    </div>
+                  )}
                 </div>
               </div>
               <table className="w-full text-sm">
@@ -300,9 +301,23 @@ export function EstimatesPage() {
               </table>
               <div className="flex flex-wrap items-center justify-end gap-2 p-4">
                 {j.approvedAt ? (
-                  <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-700">
-                    <CheckCircle2 size={18} /> You approved this on {shortDate(j.approvedAt.slice(0, 10))}. We'll be in touch to schedule.
-                  </span>
+                  <div className="flex w-full flex-wrap items-center justify-between gap-3">
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-700">
+                      <CheckCircle2 size={18} />
+                      {j.signature ? `Approved and signed by ${j.signature.name} on ${shortDate(j.signature.signedAt.slice(0, 10))}` : 'Approved'}
+                    </span>
+                    {j.deposit &&
+                      (j.deposit.status === 'paid' ? (
+                        <span className="text-sm font-medium text-emerald-700">Deposit of {money(j.deposit.amount)} paid. Thank you!</span>
+                      ) : (
+                        <Link
+                          to={`/portal/invoices/${j.deposit.invoiceId}`}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+                        >
+                          <CreditCard size={16} /> Pay {money(j.deposit.balance)} deposit
+                        </Link>
+                      ))}
+                  </div>
                 ) : asking === j.id ? (
                   <div className="w-full space-y-2">
                     <textarea id={`changes-${j.id}`} className="input" rows={3} placeholder="What would you like changed?" value={message} onChange={(e) => setMessage(e.target.value)} />
@@ -318,8 +333,8 @@ export function EstimatesPage() {
                     <Button variant="secondary" onClick={() => setAsking(j.id)}>
                       <MessageSquare size={16} /> Ask for changes
                     </Button>
-                    <Button onClick={() => approve(j)}>
-                      <Check size={16} /> Approve estimate
+                    <Button onClick={() => setSigning(j)}>
+                      <Check size={16} /> Approve & sign
                     </Button>
                   </>
                 )}
@@ -328,7 +343,82 @@ export function EstimatesPage() {
           ))}
         </div>
       )}
+      {signing && (
+        <SignEstimate
+          job={signing}
+          onClose={() => setSigning(null)}
+          onSigned={() => {
+            setSigning(null);
+            reload();
+          }}
+        />
+      )}
     </Section>
+  );
+}
+
+/** Approve an estimate by typing your name and signing. */
+function SignEstimate({ job, onClose, onSigned }: { job: PortalJob; onClose: () => void; onSigned: () => void }) {
+  const { me, brand, toast } = usePortalApp();
+  const pad = useRef<SignaturePadHandle>(null);
+  const [name, setName] = useState(me.client.name);
+  const [hasInk, setHasInk] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const deposit = job.depositPercent > 0 ? (job.total * job.depositPercent) / 100 : 0;
+
+  async function sign() {
+    const signature = pad.current?.toDataUrl();
+    if (!signature) return;
+    setBusy(true);
+    try {
+      const res = await papi<PortalJob>(`/portal/estimates/${job.id}/approve`, { method: 'POST', body: { signatureName: name, signature } });
+      toast(res.deposit ? `Estimate signed. Next: pay your ${money(res.deposit.amount)} deposit.` : "Estimate signed. We'll contact you to schedule the work.");
+      onSigned();
+    } catch (e) {
+      toast((e as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Approve & sign estimate" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="rounded-lg bg-slate-50 p-3 text-sm">
+          <div className="font-medium">{job.title}</div>
+          <div className="text-slate-500">
+            {job.number} · Total {money(job.total)}
+            {deposit > 0 && ` · ${job.depositPercent}% deposit ${money(deposit)}`}
+          </div>
+        </div>
+        <label className="block">
+          <span className="label">Your full name</span>
+          <input id="sign-name" className="input" value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <span className="label mb-0">Sign below</span>
+            <button type="button" className="text-xs text-brand-600" onClick={() => pad.current?.clear()}>
+              Clear
+            </button>
+          </div>
+          <SignaturePad ref={pad} onChange={setHasInk} />
+        </div>
+        <p className="text-xs text-slate-500">
+          By signing, I approve this estimate of {money(job.total)} and authorize {brand.name} to do the work described
+          {deposit > 0 ? `, and agree to pay a ${money(deposit)} deposit now with the balance due on completion` : ''}. My typed name and signature are my
+          electronic signature.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={sign} disabled={busy || !hasInk || !name.trim()}>
+            {busy ? 'Signing…' : 'Approve & sign'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

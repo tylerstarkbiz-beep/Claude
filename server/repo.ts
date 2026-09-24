@@ -68,6 +68,9 @@ export const mapJob = (r: Row): Job => ({
   completedAt: r.completed_at ?? null,
   source: r.source ?? 'office',
   approvedAt: r.approved_at ?? null,
+  depositPercent: r.deposit_percent ?? null,
+  reminderSentAt: r.reminder_sent_at ?? null,
+  followupCount: r.followup_count ?? 0,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });

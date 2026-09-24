@@ -232,10 +232,15 @@ export function createApi(db: DB): Router {
             assigneeId: (v) => ['assignee_id', optNum(v)],
             clientId: (v) => ['client_id', Number(v)],
             customFields: (v) => ['custom_fields', JSON.stringify(v ?? {})],
+            depositPercent: (v) => ['deposit_percent', v === null || v === '' ? null : Math.min(100, Math.max(0, Number(v) || 0))],
           },
           true,
         );
         const after = getJob(db, before.id)!;
+        // New time: it counts as a new booking, and the 24-hour reminder should go out again.
+        if (after.scheduledStart !== before.scheduledStart) {
+          db.prepare('UPDATE jobs SET booked_at = ?, reminder_sent_at = NULL WHERE id = ?').run(new Date().toISOString(), after.id);
+        }
         const automations = after.status !== before.status ? onJobStatusChanged(db, before, after) : [];
         return { ...getJob(db, before.id), automations };
       });

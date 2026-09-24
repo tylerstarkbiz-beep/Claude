@@ -53,6 +53,7 @@ export function InvoiceDetailPage() {
         <div className="flex items-center gap-3">
           <h1 className="font-mono text-2xl font-bold">{inv.number}</h1>
           <Pill label={badge.label} color={badge.color} />
+          {inv.kind === 'deposit' && <span className="rounded bg-brand-50 px-1.5 py-0.5 text-xs font-medium text-brand-700">Deposit</span>}
           {inv.job && (
             <Link to={`/jobs/${inv.job.id}`} className="text-sm text-brand-600 hover:underline">
               {inv.job.number}

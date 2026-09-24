@@ -484,6 +484,7 @@ function seedFieldData(db: DB, ids: { userIds: Record<string, number>; jobIds: R
       paymentTermsDays: 30,
       defaultTaxRate: 0,
       invoiceFooter: 'Thank you for your business! Questions about this invoice? Call (555) 400-2000.',
+      depositPercent: 25,
     }),
   );
 

@@ -130,6 +130,10 @@ export interface Job {
   source: 'office' | 'portal';
   /** When the client approved the estimate in the portal. */
   approvedAt: string | null;
+  /** Deposit % for this estimate; null means the company default. */
+  depositPercent: number | null;
+  reminderSentAt: string | null;
+  followupCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -354,6 +358,8 @@ export interface Payment {
 export interface Invoice {
   id: number;
   number: string;
+  /** 'deposit' invoices are paid when an estimate is approved and credited on the final invoice. */
+  kind: 'standard' | 'deposit';
   jobId: number | null;
   clientId: number;
   divisionId: number | null;
@@ -454,6 +460,13 @@ export interface CompanySettings {
   invoiceFooter: string;
   /** Logo as a data URL (PNG/JPEG/WebP), shown in the app and on invoices; null for none. */
   logo: string | null;
+  /** Automatic text: a reminder 24 hours before each scheduled job. */
+  textReminders: boolean;
+  /** Automatic text: a daily nudge on estimates waiting for approval, for up to quoteFollowUpDays days. */
+  quoteFollowUps: boolean;
+  quoteFollowUpDays: number;
+  /** Deposit collected when a client approves an estimate (% of the total; 0 = none). Jobs can override. */
+  depositPercent: number;
   /** Main brand color (buttons, links, highlights) and accent color, as #rrggbb. */
   brandColor: string;
   accentColor: string;

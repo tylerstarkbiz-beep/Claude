@@ -20,6 +20,10 @@ const DEFAULT_COMPANY: CompanySettings = {
   defaultTaxRate: 0,
   invoiceFooter: 'Thank you for your business!',
   logo: DEFAULT_LOGO,
+  textReminders: true,
+  quoteFollowUps: true,
+  quoteFollowUpDays: 7,
+  depositPercent: 0,
   ...DEFAULT_BRAND,
 };
 
@@ -49,6 +53,7 @@ function mapInvoice(r: Row): Invoice {
   return {
     id: r.id,
     number: r.number,
+    kind: r.kind ?? 'standard',
     jobId: r.job_id,
     clientId: r.client_id,
     divisionId: r.division_id,
@@ -98,13 +103,36 @@ function reconcile(db: DB, invoiceId: number): string[] {
   if (inv.status === 'void' || inv.status === 'draft') return [];
   const next = inv.balance <= 0 && inv.total > 0 ? 'paid' : 'sent';
   if (next !== inv.status) db.prepare('UPDATE invoices SET status = ? WHERE id = ?').run(next, inv.id);
-  if (next === 'paid' && inv.jobId) {
+  // A paid deposit doesn't make the job paid; only the final (standard) invoices do.
+  if (next === 'paid' && inv.jobId && inv.kind === 'standard') {
     const unpaid = db
-      .prepare("SELECT COUNT(*) AS n FROM invoices WHERE job_id = ? AND status IN ('draft', 'sent')")
+      .prepare("SELECT COUNT(*) AS n FROM invoices WHERE job_id = ? AND kind = 'standard' AND status IN ('draft', 'sent')")
       .get(inv.jobId) as { n: number };
     if (unpaid.n === 0) return setJobStatus(db, inv.jobId, 'paid');
   }
   return [];
+}
+
+/** A deposit invoice, due now, for a percentage of an approved estimate. */
+export function createDepositInvoice(db: DB, jobId: number, percent: number): Invoice {
+  const job = getJob(db, jobId);
+  if (!job) throw new HttpError(404, 'Job not found');
+  const amount = cents((job.total * percent) / 100);
+  const n = (db.prepare('SELECT COALESCE(MAX(id), 0) + 1001 AS n FROM invoices').get() as { n: number }).n;
+  const r = db
+    .prepare(
+      `INSERT INTO invoices (number, job_id, client_id, division_id, kind, status, issue_date, due_date, tax_rate, public_token)
+       VALUES (?, ?, ?, ?, 'deposit', 'sent', ?, ?, 0, ?)`,
+    )
+    .run(`INV-${n}`, job.id, job.clientId, job.divisionId, localDate(), localDate(), randomBytes(16).toString('hex'));
+  const invoiceId = Number(r.lastInsertRowid);
+  db.prepare('INSERT INTO invoice_items (invoice_id, description, quantity, unit_price) VALUES (?, ?, 1, ?)').run(
+    invoiceId,
+    `Deposit (${percent}% of ${job.number} ${job.title})`,
+    amount,
+  );
+  logActivity(db, 'invoice', `Deposit invoice INV-${n} for ${job.number}: $${amount.toFixed(2)}`, { jobId: job.id });
+  return getInvoice(db, invoiceId);
 }
 
 /** Record a payment and settle the invoice (and its job) when the balance reaches zero. */
@@ -200,6 +228,10 @@ export function createInvoicesApi(db: DB, pay: Payments): Router {
       }
       if (merged.logo && merged.logo.length > MAX_LOGO_CHARS) throw new HttpError(413, 'Logo image is too large (max 1.5 MB)');
       merged.paymentTermsDays = Math.max(0, Number(merged.paymentTermsDays) || 0);
+      merged.quoteFollowUpDays = Math.min(30, Math.max(1, Math.round(Number(merged.quoteFollowUpDays) || 7)));
+      merged.depositPercent = Math.min(100, Math.max(0, Number(merged.depositPercent) || 0));
+      merged.textReminders = !!merged.textReminders;
+      merged.quoteFollowUps = !!merged.quoteFollowUps;
       merged.defaultTaxRate = Math.max(0, Number(merged.defaultTaxRate) || 0);
       db.prepare("INSERT INTO settings (key, value) VALUES ('company', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value").run(
         JSON.stringify(merged),
@@ -261,6 +293,19 @@ export function createInvoicesApi(db: DB, pay: Payments): Router {
               li.description,
               li.quantity,
               li.unitPrice,
+            );
+          }
+          // Credit deposits already collected on this job.
+          const deposits = db
+            .prepare(`${INVOICE_SELECT} WHERE i.job_id = ? AND i.kind = 'deposit' AND i.status != 'void'`)
+            .all(job.id)
+            .map(mapInvoice)
+            .filter((d) => d.amountPaid > 0);
+          for (const d of deposits) {
+            db.prepare('INSERT INTO invoice_items (invoice_id, description, quantity, unit_price) VALUES (?, ?, 1, ?)').run(
+              invoiceId,
+              `Less deposit paid (${d.number})`,
+              -d.amountPaid,
             );
           }
           logActivity(db, 'invoice', `Created invoice INV-${next.n} for ${job.number}`, { jobId: job.id });

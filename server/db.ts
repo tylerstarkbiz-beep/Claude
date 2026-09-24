@@ -266,6 +266,19 @@ CREATE TABLE IF NOT EXISTS outbox (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   sent_at TEXT
 );
+-- The client's signature on an approved estimate, with what they agreed to at that moment.
+CREATE TABLE IF NOT EXISTS estimate_signatures (
+  id INTEGER PRIMARY KEY,
+  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  signer_name TEXT NOT NULL,
+  signature TEXT NOT NULL,
+  total REAL NOT NULL,
+  line_items TEXT NOT NULL,
+  ip TEXT,
+  user_agent TEXT,
+  signed_at TEXT NOT NULL
+);
 `;
 
 // Columns added after a table first shipped. CREATE TABLE IF NOT EXISTS won't add them to an
@@ -286,6 +299,21 @@ const ADDED_COLUMNS: [table: string, column: string, definition: string][] = [
   ['clients', 'stripe_customer_id', 'TEXT'],
   // Stripe PaymentIntent id, so a card payment is never recorded twice.
   ['payments', 'external_id', 'TEXT'],
+  // Texting: email vs. text in the outbox, which job it's about, and what kind of message.
+  ['outbox', 'channel', "TEXT NOT NULL DEFAULT 'email'"],
+  ['outbox', 'job_id', 'INTEGER REFERENCES jobs(id) ON DELETE SET NULL'],
+  ['outbox', 'kind', 'TEXT'],
+  ['clients', 'sms_opt_out', 'INTEGER NOT NULL DEFAULT 0'],
+  // When the job's time was last set, so a same-day booking doesn't also get a "reminder".
+  ['jobs', 'booked_at', 'TEXT'],
+  ['jobs', 'reminder_sent_at', 'TEXT'],
+  ['jobs', 'quoted_at', 'TEXT'],
+  ['jobs', 'followup_count', 'INTEGER NOT NULL DEFAULT 0'],
+  ['jobs', 'last_followup_on', 'TEXT'],
+  // Deposit % for this job's estimate; null uses the company default.
+  ['jobs', 'deposit_percent', 'REAL'],
+  // 'deposit' invoices are collected when an estimate is approved and credited on the final invoice.
+  ['invoices', 'kind', "TEXT NOT NULL DEFAULT 'standard'"],
 ];
 
 function migrate(db: DB) {

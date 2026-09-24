@@ -95,6 +95,7 @@ export function Invoices() {
                   <tr key={i.id} onClick={() => navigate(`/invoices/${i.id}`)} className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50">
                     <td className="px-4 py-3 font-mono font-medium">
                       <Link to={`/invoices/${i.id}`}>{i.number}</Link>
+                      {i.kind === 'deposit' && <span className="ml-1.5 rounded bg-brand-50 px-1 font-sans text-[10px] font-medium text-brand-700">Deposit</span>}
                     </td>
                     <td className="px-4 py-3">{clientName(i.clientId)}</td>
                     <td className="px-4 py-3">

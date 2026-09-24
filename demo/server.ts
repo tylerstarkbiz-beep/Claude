@@ -8,6 +8,7 @@ import { createInvoicesApi } from '../server/invoices.ts';
 import { createTeamApi } from '../server/team.ts';
 import { createCostingApi } from '../server/costing.ts';
 import { createPortalApi } from '../server/portal.ts';
+import { createTextingApi, runScheduledTexts } from '../server/texting.ts';
 import { stripeFromEnv } from '../server/stripe.ts';
 import { uploads } from './shims/fs.ts';
 import type { DemoRouter, Route } from './shims/express.ts';
@@ -15,8 +16,9 @@ import type { DemoRouter, Route } from './shims/express.ts';
 export function startDemoServer() {
   const db = openDb(':memory:');
   seed(db);
+  runScheduledTexts(db); // fill the outbox with today's automatic texts
   const pay = stripeFromEnv(); // no keys in the demo, so card payments show as not set up
-  const routers = [createPortalApi(db, pay), createNotesApi(db, '/uploads'), createTimeApi(db), createInvoicesApi(db, pay), createTeamApi(db), createCostingApi(db), createApi(db)] as unknown as DemoRouter[];
+  const routers = [createPortalApi(db, pay), createTextingApi(db), createNotesApi(db, '/uploads'), createTimeApi(db), createInvoicesApi(db, pay), createTeamApi(db), createCostingApi(db), createApi(db)] as unknown as DemoRouter[];
   const routes: Route[] = routers.flatMap((r) => r.routes);
 
   function dispatch(method: string, url: string, body: unknown, headers: Record<string, string>): Promise<{ status: number; data: unknown }> {

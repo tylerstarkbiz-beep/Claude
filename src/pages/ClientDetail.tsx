@@ -187,6 +187,7 @@ function PortalCard({ client }: { client: Client }) {
             )}
           </div>
           {!client.email && <p className="mt-2 text-xs text-amber-600">Add an email address so this client can get invites and sign-in links.</p>}
+          <TextingToggle clientId={client.id} />
           {data.emails.length > 0 && (
             <div className="mt-4 space-y-1.5 border-t border-slate-100 pt-3">
               {data.emails.map((m) => (
@@ -204,5 +205,22 @@ function PortalCard({ client }: { client: Client }) {
         <p className="text-sm text-slate-500">The portal is off for this client. Turning it off signed them out and cancelled any unused links.</p>
       )}
     </section>
+  );
+}
+
+/** Whether automatic and office texts go to this client (e.g. they asked us to stop texting). */
+function TextingToggle({ clientId }: { clientId: number }) {
+  const { data, setData } = useApi<{ optOut: boolean; mobile: string | null }>(`/clients/${clientId}/texting`);
+  if (!data) return null;
+  return (
+    <label className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-3 text-sm">
+      <input
+        type="checkbox"
+        checked={!data.optOut && !!data.mobile}
+        disabled={!data.mobile}
+        onChange={async (e) => setData({ ...data, ...(await patch<{ optOut: boolean }>(`/clients/${clientId}/texting`, { optOut: !e.target.checked })) })}
+      />
+      {data.mobile ? 'Text messages (reminders, confirmations, estimate follow-ups)' : 'Text messages: add a mobile number to turn on'}
+    </label>
   );
 }

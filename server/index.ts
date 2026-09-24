@@ -9,6 +9,7 @@ import { createTimeApi } from './time.ts';
 import { createTeamApi } from './team.ts';
 import { createCostingApi } from './costing.ts';
 import { createPortalApi } from './portal.ts';
+import { createTextingApi, runScheduledTexts } from './texting.ts';
 import { stripeFromEnv, type Payments } from './stripe.ts';
 import { HttpError } from './repo.ts';
 import { seedIfEmpty } from './seed.ts';
@@ -24,6 +25,7 @@ export function createApp(db: DB, opts: { uploadDir?: string; payments?: Payment
   app.use(
     '/api',
     createPortalApi(db, payments),
+    createTextingApi(db),
     createNotesApi(db, uploadDir),
     createTimeApi(db),
     createInvoicesApi(db, payments),
@@ -56,4 +58,17 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
   seedIfEmpty(db);
   const port = Number(process.env.PORT ?? 3001);
   createApp(db).listen(port, () => console.log(`FieldBoard listening on http://localhost:${port}`));
+
+  // Automatic texts (24-hour reminders, estimate follow-ups). Each job records what it was sent,
+  // so running often never double-sends.
+  const texts = () => {
+    try {
+      const sent = runScheduledTexts(db);
+      if (sent.length) console.log(`Automatic texts: ${sent.join(', ')}`);
+    } catch (err) {
+      console.error('Automatic texts failed', err);
+    }
+  };
+  texts();
+  setInterval(texts, 10 * 60_000);
 }

@@ -9,6 +9,8 @@ import { Avatar, Button, CustomFieldInput, DivisionBadge, Pill, StatusCell } fro
 import { TaskDrawer, statusOptions } from '../components/TaskDrawer';
 import { NotesFeed } from '../components/NotesFeed';
 import { JobCostingCard } from '../components/JobCostingCard';
+import { TextClientButton } from '../components/TextClient';
+import { EstimateCard } from '../components/EstimateCard';
 import { invoiceBadge } from './Invoices';
 import { JOB_STATUSES, JOB_STATUS_META, type Invoice, type InvoiceDetail, type Job, type JobDetail, type LineItem, type Task, type TimeEntry } from '../../shared/types';
 
@@ -97,6 +99,15 @@ export function JobDetailPage() {
                   {job.client.name}
                 </Link>
                 {job.client.company && <div className="text-sm text-slate-500">{job.client.company}</div>}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {job.client.phone && (
+                    // tel: opens the phone's dialer (or the computer's calling app) with the number filled in.
+                    <a href={`tel:${job.client.phone.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                      <Phone size={15} /> Call
+                    </a>
+                  )}
+                  <TextClientButton job={job} onSent={reload} />
+                </div>
                 <div className="mt-2 space-y-1 text-sm text-slate-600">
                   {job.client.phone && (
                     <a href={`tel:${job.client.phone}`} className="flex items-center gap-1.5 hover:text-brand-600">
@@ -190,6 +201,12 @@ export function JobDetailPage() {
         </div>
 
         <div className="space-y-6">
+          <EstimateCard job={job} onChange={reload} />
+          {job.reminderSentAt && job.scheduledStart && (
+            <p className="-mt-3 px-1 text-xs text-slate-500">
+              📱 24-hour reminder text: {job.reminderSentAt.startsWith('skipped') ? 'not sent (booked less than a day ahead)' : `sent ${relative(job.reminderSentAt)}`}
+            </p>
+          )}
           {money$ && <JobInvoices job={job} />}
           {!money$ && <JobTime jobId={job.id} />}
           <JobTasks job={job} onOpen={setOpenTask} onChange={reload} />

@@ -45,6 +45,8 @@ function Login({ brand }: { brand: Branding }) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const token = params.get('token');
+  // Links in texts can point at a page (e.g. estimates); only portal pages are allowed.
+  const next = params.get('next')?.startsWith('/portal') ? params.get('next')! : '/portal';
   const [state, setState] = useState<'idle' | 'redeeming' | 'sent' | 'error'>(token ? 'redeeming' : 'idle');
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
@@ -54,13 +56,13 @@ function Login({ brand }: { brand: Branding }) {
     papi<{ session: string }>('/portal/auth/redeem', { method: 'POST', body: { token } })
       .then(({ session }) => {
         setSession(session);
-        navigate('/portal', { replace: true });
+        navigate(next, { replace: true });
       })
       .catch((e: Error) => {
         setState('error');
         setMessage(e.message);
       });
-  }, [token, navigate]);
+  }, [token, next, navigate]);
 
   async function requestLink(e: React.FormEvent) {
     e.preventDefault();

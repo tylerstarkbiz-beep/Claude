@@ -1,7 +1,7 @@
 // Creating a job is shared by the office API and the customer portal, so both run the same automations.
 import { logActivity, tx, type DB } from './db.ts';
 import { runAutomations, syncCompletedAt } from './automations.ts';
-import { HttpError, getClient, getJob, nextJobNumber } from './repo.ts';
+import { HttpError, getClient, getJob, localDateTime, nextJobNumber } from './repo.ts';
 import type { Job, JobStatus } from '../shared/types.ts';
 
 export interface NewJob {
@@ -54,6 +54,8 @@ export function createJob(db: DB, input: NewJob): Job & { automations: string[] 
       );
     }
     syncCompletedAt(db, jobId, status);
+    if (input.scheduledStart) db.prepare('UPDATE jobs SET booked_at = ? WHERE id = ?').run(new Date().toISOString(), jobId);
+    if (status === 'quoted') db.prepare('UPDATE jobs SET quoted_at = ? WHERE id = ?').run(localDateTime(), jobId);
     const job = getJob(db, jobId)!;
     logActivity(db, 'job', `${input.source === 'portal' ? `${client.name} requested` : 'Created job'} ${job.number}: ${job.title}`, { jobId });
     const automations = runAutomations(db, { type: 'job_created', job });

@@ -256,6 +256,35 @@ function CompanyEditor() {
         {field('address', 'Address')}
         {field('paymentTermsDays', 'Payment terms (days until due)', 'number')}
         {field('defaultTaxRate', 'Default tax %', 'number')}
+        <div className="border-t border-slate-100 sm:col-span-2" />
+        <div className="sm:col-span-2">
+          <h3 className="mb-1 text-sm font-semibold">Automatic texts & deposits</h3>
+          <Integrations />
+        </div>
+        <label className="flex items-start gap-2 text-sm sm:col-span-2">
+          <input type="checkbox" className="mt-1" checked={data.textReminders} onChange={(e) => setData({ ...data, textReminders: e.target.checked })} />
+          <span>
+            <b className="font-medium">24-hour reminders.</b> Text clients a reminder the day before each scheduled job (8am–8pm only; skipped if the job was
+            booked less than a day ahead).
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm sm:col-span-2">
+          <input type="checkbox" className="mt-1" checked={data.quoteFollowUps} onChange={(e) => setData({ ...data, quoteFollowUps: e.target.checked })} />
+          <span>
+            <b className="font-medium">Daily estimate follow-ups.</b> Text a link to approve each estimate that's still waiting, once a day at 10am, for up to{' '}
+            <input
+              id="company-followup-days"
+              type="number"
+              min={1}
+              max={30}
+              className="input inline-block w-16 px-2 py-0.5"
+              value={data.quoteFollowUpDays}
+              onChange={(e) => setData({ ...data, quoteFollowUpDays: Number(e.target.value) })}
+            />{' '}
+            days. They stop as soon as the client approves.
+          </span>
+        </label>
+        {field('depositPercent', 'Deposit when an estimate is approved (% of total, 0 for none)', 'number')}
         <div className="sm:col-span-2">
           <span className="label">Invoice footer</span>
           <textarea id="company-footer" className="input" rows={2} value={data.invoiceFooter} onChange={(e) => setData({ ...data, invoiceFooter: e.target.value })} />
@@ -344,6 +373,7 @@ function ChecklistTemplates() {
 
 interface OutboxEntry {
   id: number;
+  channel: 'email' | 'sms';
   to: string;
   subject: string;
   body: string;
@@ -351,6 +381,27 @@ interface OutboxEntry {
   status: 'queued' | 'sent' | 'failed' | 'not_configured';
   error: string | null;
   createdAt: string;
+}
+
+/** Which outside services are connected, with what's needed for the rest. */
+function Integrations() {
+  const { data } = useApi<{ email: boolean; sms: boolean; payments: boolean }>('/settings/integrations');
+  if (!data) return null;
+  const Row = ({ on, label, need }: { on: boolean; label: string; need: string }) => (
+    <div className="flex items-start gap-2 text-xs">
+      <span className={'mt-0.5 h-2 w-2 shrink-0 rounded-full ' + (on ? 'bg-emerald-500' : 'bg-amber-400')} />
+      <span>
+        <b className="font-medium">{label}:</b> {on ? 'connected' : `not connected. Messages wait in the outbox below. To connect: ${need}.`}
+      </span>
+    </div>
+  );
+  return (
+    <div className="mb-2 space-y-1 rounded-md bg-slate-50 p-3 text-slate-600">
+      <Row on={data.sms} label="Text messages (Twilio)" need="set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM and PUBLIC_URL on the server" />
+      <Row on={data.email} label="Email (SendGrid)" need="set SENDGRID_API_KEY, MAIL_FROM and PUBLIC_URL" />
+      <Row on={data.payments} label="Card payments & deposits (Stripe)" need="set STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY" />
+    </div>
+  );
 }
 
 /** Every email the app has sent, or would have sent before an email service is connected. */
@@ -361,10 +412,10 @@ function Outbox() {
   const waiting = data?.some((m) => m.status === 'not_configured');
   return (
     <>
-      <h2 className="mb-1 font-semibold">Email outbox</h2>
+      <h2 className="mb-1 font-semibold">Messages outbox</h2>
       <p className="mb-3 text-sm text-slate-500">
-        Portal invites and sign-in links sent to clients.
-        {waiting && ' No email service is connected yet, so these are waiting here. You can copy a link and text it to the client.'}
+        Texts and emails to clients: booking confirmations, reminders, estimate follow-ups, portal invites.
+        {waiting && ' Some are waiting because a messaging service isn\'t connected yet. You can copy a link and send it yourself.'}
       </p>
       <div className="card mb-10 divide-y divide-slate-100">
         {!data?.length && <p className="p-4 text-sm text-slate-400">No emails yet. Adding a client with an email address sends them a portal invite.</p>}
@@ -372,7 +423,10 @@ function Outbox() {
           <div key={m.id} className="p-4 text-sm">
             <button className="flex w-full items-start gap-3 text-left" onClick={() => setOpen(open === m.id ? null : m.id)}>
               <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{m.subject}</div>
+                <div className="truncate font-medium">
+                  <span className="mr-1.5 rounded bg-slate-100 px-1 text-[10px] font-semibold uppercase text-slate-500">{m.channel === 'sms' ? 'Text' : 'Email'}</span>
+                  {m.subject}
+                </div>
                 <div className="text-xs text-slate-500">
                   To {m.to} · {relative(m.createdAt)}
                 </div>

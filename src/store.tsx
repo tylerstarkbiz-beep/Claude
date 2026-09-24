@@ -46,6 +46,10 @@ const FALLBACK_COMPANY: CompanySettings = {
   defaultTaxRate: 0,
   invoiceFooter: '',
   logo: DEFAULT_LOGO,
+  textReminders: true,
+  quoteFollowUps: true,
+  quoteFollowUpDays: 7,
+  depositPercent: 0,
   ...DEFAULT_BRAND,
 };
 
