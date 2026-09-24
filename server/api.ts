@@ -150,6 +150,7 @@ export function createApi(db: DB): Router {
       if (q.clientId) (where.push('j.client_id = ?'), params.push(Number(q.clientId)));
       if (q.assigneeId) (where.push('j.assignee_id = ?'), params.push(Number(q.assigneeId)));
       if (q.status) (where.push('j.status = ?'), params.push(String(q.status)));
+      if (q.unscheduled === '1') where.push("j.scheduled_start IS NULL AND j.status NOT IN ('completed', 'invoiced', 'paid', 'cancelled')");
       if (q.from) (where.push('j.scheduled_start >= ?'), params.push(String(q.from)));
       if (q.to) (where.push('j.scheduled_start < ?'), params.push(String(q.to)));
       if (q.q) {
@@ -233,6 +234,9 @@ export function createApi(db: DB): Router {
       if (!before) throw new HttpError(404, 'Job not found');
       const b = req.body;
       if ('status' in b) assertOneOf(b.status, JOB_STATUSES, 'status');
+      const start = 'scheduledStart' in b ? b.scheduledStart || null : before.scheduledStart;
+      const end = 'scheduledEnd' in b ? b.scheduledEnd || null : before.scheduledEnd;
+      if (start && end && end <= start) throw new HttpError(400, 'The job has to end after it starts');
       return tx(db, () => {
         patch(
           db,

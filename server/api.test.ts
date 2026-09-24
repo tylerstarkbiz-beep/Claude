@@ -94,3 +94,20 @@ test('a broken automation does not block the job update', async () => {
   assert.ok(err);
   close();
 });
+
+test('rescheduling a job keeps end after start and can reassign the tech', async () => {
+  const { call, close } = await setup();
+  const { data: jobs } = await call('GET', '/jobs?status=scheduled');
+  const job = jobs[0];
+  const { data: boot } = await call('GET', '/bootstrap');
+  const tech = boot.users.find((u: any) => u.id !== job.assigneeId);
+
+  const moved = await call('PATCH', `/jobs/${job.id}`, { scheduledStart: '2026-10-01T10:30', scheduledEnd: '2026-10-01T12:45', assigneeId: tech.id });
+  assert.equal(moved.status, 200);
+  assert.equal(moved.data.scheduledStart, '2026-10-01T10:30');
+  assert.equal(moved.data.assigneeId, tech.id);
+
+  const backwards = await call('PATCH', `/jobs/${job.id}`, { scheduledEnd: '2026-10-01T09:00' });
+  assert.equal(backwards.status, 400);
+  close();
+});
