@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { assertOneOf, h, id, optNum, patch, required } from './http.ts';
 import { logActivity, tx, type DB } from './db.ts';
-import { onJobStatusChanged, runAutomations, syncCompletedAt } from './automations.ts';
+import { onJobStatusChanged, runAutomations } from './automations.ts';
 import { profitRows } from './costing.ts';
+import { createJob } from './jobs.ts';
+import { sendInvite } from './portal.ts';
 import { getCompany } from './invoices.ts';
 import {
   HttpError,
@@ -24,7 +26,6 @@ import {
   mapTask,
   mapTaskUpdate,
   mapUser,
-  nextJobNumber,
 } from './repo.ts';
 import {
   JOB_STATUSES,
@@ -101,7 +102,10 @@ export function createApi(db: DB): Router {
       const r = db
         .prepare('INSERT INTO clients (name, company, email, phone, address, notes) VALUES (?, ?, ?, ?, ?, ?)')
         .run(required(b, 'name'), b.company || null, b.email || null, b.phone || null, b.address || null, b.notes || null);
-      return getClient(db, Number(r.lastInsertRowid));
+      const client = getClient(db, Number(r.lastInsertRowid))!;
+      // Every new client gets a portal; the invite goes out if we have their email.
+      sendInvite(db, client);
+      return client;
     }),
   );
 
@@ -167,43 +171,18 @@ export function createApi(db: DB): Router {
     '/jobs',
     h((req) => {
       const b = req.body;
-      const divisionId = Number(b.divisionId);
-      const clientId = Number(b.clientId);
-      if (!getClient(db, clientId)) throw new HttpError(400, 'Client not found');
-      const status = assertOneOf(b.status ?? 'request', JOB_STATUSES, 'status');
-      const job = tx(db, () => {
-        const r = db
-          .prepare(
-            `INSERT INTO jobs (number, division_id, client_id, title, description, status, address, scheduled_start, scheduled_end, assignee_id, custom_fields)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .run(
-            nextJobNumber(db, divisionId),
-            divisionId,
-            clientId,
-            required(b, 'title'),
-            b.description || null,
-            status,
-            b.address || getClient(db, clientId)!.address,
-            b.scheduledStart || null,
-            b.scheduledEnd || null,
-            optNum(b.assigneeId),
-            JSON.stringify(b.customFields ?? {}),
-          );
-        const jobId = Number(r.lastInsertRowid);
-        for (const li of b.lineItems ?? []) {
-          db.prepare('INSERT INTO line_items (job_id, description, quantity, unit_price) VALUES (?, ?, ?, ?)').run(
-            jobId,
-            li.description,
-            Number(li.quantity) || 1,
-            Number(li.unitPrice) || 0,
-          );
-        }
-        syncCompletedAt(db, jobId, status);
-        const job = getJob(db, jobId)!;
-        logActivity(db, 'job', `Created job ${job.number}: ${job.title}`, { jobId });
-        const automations = runAutomations(db, { type: 'job_created', job });
-        return { ...job, automations };
+      const job = createJob(db, {
+        divisionId: Number(b.divisionId),
+        clientId: Number(b.clientId),
+        title: required(b, 'title'),
+        description: b.description,
+        status: assertOneOf(b.status ?? 'request', JOB_STATUSES, 'status'),
+        address: b.address,
+        scheduledStart: b.scheduledStart,
+        scheduledEnd: b.scheduledEnd,
+        assigneeId: optNum(b.assigneeId),
+        customFields: b.customFields,
+        lineItems: b.lineItems,
       });
       return job;
     }),

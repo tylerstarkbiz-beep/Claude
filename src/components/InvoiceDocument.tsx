@@ -1,13 +1,8 @@
-import { Trash2 } from "lucide-react";
-import { money, shortDate } from "../format";
-import type {
-  CompanySettings,
-  InvoiceDetail,
-  InvoiceItem,
-} from "../../shared/types";
+import { Trash2 } from 'lucide-react';
+import { money, shortDate } from '../format';
+import type { CompanySettings, InvoiceDetail, InvoiceItem } from '../../shared/types';
 
-const cellInput =
-  "w-full rounded bg-transparent px-1 py-0.5 outline-none hover:bg-slate-50 focus:bg-brand-50 print:hover:bg-transparent";
+const cellInput = 'w-full rounded bg-transparent px-1 py-0.5 outline-none hover:bg-slate-50 focus:bg-brand-50 print:hover:bg-transparent';
 
 /** The invoice as the client sees it; editable inline when `onEditItem` is passed. */
 export function InvoiceDocument({
@@ -19,19 +14,7 @@ export function InvoiceDocument({
 }: {
   invoice: Pick<
     InvoiceDetail,
-    | "number"
-    | "issueDate"
-    | "dueDate"
-    | "items"
-    | "subtotal"
-    | "tax"
-    | "taxRate"
-    | "total"
-    | "amountPaid"
-    | "balance"
-    | "notes"
-    | "client"
-    | "status"
+    'number' | 'issueDate' | 'dueDate' | 'items' | 'subtotal' | 'tax' | 'taxRate' | 'total' | 'amountPaid' | 'balance' | 'notes' | 'client' | 'status'
   > & {
     job: { number: string; title: string; address: string | null } | null;
   };
@@ -45,39 +28,19 @@ export function InvoiceDocument({
     <div className="print-area card border-t-4 border-t-brand-600 p-6 sm:p-10">
       <div className="mb-8 flex flex-wrap justify-between gap-6">
         <div className="flex flex-wrap items-start gap-4">
-          {company.logo && (
-            <img
-              src={company.logo}
-              alt={company.name}
-              className="h-24 w-auto max-w-[180px] object-contain"
-            />
-          )}
+          {company.logo && <img src={company.logo} alt={company.name} className="h-24 w-auto max-w-[180px] object-contain" />}
           <div>
-            <div className="text-xl font-bold text-brand-600">
-              {company.name}
-            </div>
-            <div className="mt-1 whitespace-pre-line text-sm text-slate-500">
-              {[company.address, company.phone, company.email]
-                .filter(Boolean)
-                .join("\n")}
-            </div>
+            <div className="text-xl font-bold text-brand-600">{company.name}</div>
+            <div className="mt-1 whitespace-pre-line text-sm text-slate-500">{[company.address, company.phone, company.email].filter(Boolean).join('\n')}</div>
           </div>
         </div>
         <div className="text-right">
-          <div className="text-3xl font-light tracking-wide text-brand-600">
-            INVOICE
-          </div>
+          <div className="text-3xl font-light tracking-wide text-brand-600">INVOICE</div>
           <div className="mt-1 font-mono text-sm">{invoice.number}</div>
-          {invoice.status === "paid" && (
-            <div className="mt-2 inline-block rounded border-2 border-emerald-600 px-2 text-sm font-bold text-emerald-600">
-              PAID
-            </div>
+          {invoice.status === 'paid' && (
+            <div className="mt-2 inline-block rounded border-2 border-emerald-600 px-2 text-sm font-bold text-emerald-600">PAID</div>
           )}
-          {invoice.status === "void" && (
-            <div className="mt-2 inline-block rounded border-2 border-slate-500 px-2 text-sm font-bold text-slate-500">
-              VOID
-            </div>
-          )}
+          {invoice.status === 'void' && <div className="mt-2 inline-block rounded border-2 border-slate-500 px-2 text-sm font-bold text-slate-500">VOID</div>}
         </div>
       </div>
 
@@ -94,9 +57,7 @@ export function InvoiceDocument({
             <div className="label">For</div>
             <div className="font-medium">{invoice.job.title}</div>
             <div className="text-slate-600">{invoice.job.address}</div>
-            <div className="font-mono text-xs text-slate-400">
-              {invoice.job.number}
-            </div>
+            <div className="font-mono text-xs text-slate-400">{invoice.job.number}</div>
           </div>
         )}
         <div className="sm:text-right">
@@ -129,10 +90,7 @@ export function InvoiceDocument({
                   <input
                     className={cellInput}
                     defaultValue={it.description}
-                    onBlur={(e) =>
-                      e.target.value !== it.description &&
-                      onEditItem!(it, { description: e.target.value })
-                    }
+                    onBlur={(e) => e.target.value !== it.description && onEditItem!(it, { description: e.target.value })}
                   />
                 ) : (
                   it.description
@@ -143,12 +101,9 @@ export function InvoiceDocument({
                   <input
                     type="number"
                     step="any"
-                    className={cellInput + " text-right"}
+                    className={cellInput + ' text-right'}
                     defaultValue={it.quantity}
-                    onBlur={(e) =>
-                      Number(e.target.value) !== it.quantity &&
-                      onEditItem!(it, { quantity: Number(e.target.value) })
-                    }
+                    onBlur={(e) => Number(e.target.value) !== it.quantity && onEditItem!(it, { quantity: Number(e.target.value) })}
                   />
                 ) : (
                   it.quantity
@@ -159,20 +114,15 @@ export function InvoiceDocument({
                   <input
                     type="number"
                     step="any"
-                    className={cellInput + " text-right"}
+                    className={cellInput + ' text-right'}
                     defaultValue={it.unitPrice}
-                    onBlur={(e) =>
-                      Number(e.target.value) !== it.unitPrice &&
-                      onEditItem!(it, { unitPrice: Number(e.target.value) })
-                    }
+                    onBlur={(e) => Number(e.target.value) !== it.unitPrice && onEditItem!(it, { unitPrice: Number(e.target.value) })}
                   />
                 ) : (
                   money(it.unitPrice)
                 )}
               </td>
-              <td className="py-2 text-right font-medium">
-                {money(it.quantity * it.unitPrice)}
-              </td>
+              <td className="py-2 text-right font-medium">{money(it.quantity * it.unitPrice)}</td>
               {editable && (
                 <td className="no-print text-right">
                   <button
@@ -192,13 +142,9 @@ export function InvoiceDocument({
 
       <div className="mt-6 ml-auto w-full max-w-xs space-y-1 text-sm">
         <Row label="Subtotal" value={money(invoice.subtotal)} />
-        {invoice.taxRate > 0 && (
-          <Row label={`Tax (${invoice.taxRate}%)`} value={money(invoice.tax)} />
-        )}
+        {invoice.taxRate > 0 && <Row label={`Tax (${invoice.taxRate}%)`} value={money(invoice.tax)} />}
         <Row label="Total" value={money(invoice.total)} bold />
-        {invoice.amountPaid > 0 && (
-          <Row label="Paid" value={`−${money(invoice.amountPaid)}`} />
-        )}
+        {invoice.amountPaid > 0 && <Row label="Paid" value={`−${money(invoice.amountPaid)}`} />}
         <div className="mt-2 flex justify-between border-t-2 border-brand-600 pt-2 text-base font-bold text-brand-700">
           <span>Balance due</span>
           <span>{money(invoice.balance)}</span>
@@ -207,9 +153,7 @@ export function InvoiceDocument({
 
       {(invoice.notes || company.invoiceFooter) && (
         <div className="mt-10 border-t border-slate-200 pt-4 text-sm whitespace-pre-line text-slate-500">
-          {invoice.notes && (
-            <p className="mb-2 text-slate-700">{invoice.notes}</p>
-          )}
+          {invoice.notes && <p className="mb-2 text-slate-700">{invoice.notes}</p>}
           {company.invoiceFooter}
         </div>
       )}
@@ -217,21 +161,9 @@ export function InvoiceDocument({
   );
 }
 
-function Row({
-  label,
-  value,
-  bold,
-}: {
-  label: string;
-  value: string;
-  bold?: boolean;
-}) {
+function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return (
-    <div
-      className={
-        "flex justify-between " + (bold ? "font-semibold" : "text-slate-600")
-      }
-    >
+    <div className={'flex justify-between ' + (bold ? 'font-semibold' : 'text-slate-600')}>
       <span>{label}</span>
       <span>{value}</span>
     </div>

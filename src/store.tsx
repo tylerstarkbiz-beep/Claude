@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { api } from './api';
 import { userCan, type Board, type CompanySettings, type Division, type Permission, type User } from '../shared/types';
 import { DEFAULT_BRAND, DEFAULT_LOGO, DEFAULT_MARK } from '../shared/brand';
+import { applyBrand } from './brand';
 
 interface Toast {
   id: number;
@@ -96,11 +97,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Apply the company's colors to the whole UI (the brand-* / accent-* palettes read these) and name the tab.
   useEffect(() => {
-    if (!company) return;
-    const root = document.documentElement.style;
-    root.setProperty('--brand', company.brandColor);
-    root.setProperty('--accent', company.accentColor);
-    document.title = company.name;
+    if (company) applyBrand(company);
   }, [company]);
 
   const toast = useCallback((message: string, kind: Toast['kind'] = 'info') => {

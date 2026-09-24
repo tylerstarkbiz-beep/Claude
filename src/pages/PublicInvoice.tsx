@@ -2,6 +2,7 @@ import { useParams } from 'react-router-dom';
 import { Printer } from 'lucide-react';
 import { useApi } from '../api';
 import { DEMO } from '../env';
+import { useBranding } from '../brand';
 import { Button } from '../components/ui';
 import { InvoiceDocument } from '../components/InvoiceDocument';
 import type { CompanySettings, InvoiceDetail } from '../../shared/types';
@@ -11,6 +12,7 @@ type PublicInvoice = { company: CompanySettings; invoice: Omit<InvoiceDetail, 'j
 /** What a client sees when they open their invoice link. No app chrome, no login. */
 export function PublicInvoicePage() {
   const { token } = useParams();
+  useBranding((name) => `Invoice from ${name}`);
   const { data, error } = useApi<PublicInvoice>(`/public/invoices/${token}`);
   if (error) return <div className="grid h-full place-items-center text-slate-500">This invoice link is not valid.</div>;
   if (!data) return <div className="grid h-full place-items-center text-slate-400">Loading…</div>;

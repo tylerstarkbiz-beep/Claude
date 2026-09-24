@@ -8,17 +8,29 @@ import { createNotesApi } from './notes.ts';
 import { createTimeApi } from './time.ts';
 import { createTeamApi } from './team.ts';
 import { createCostingApi } from './costing.ts';
+import { createPortalApi } from './portal.ts';
+import { stripeFromEnv, type Payments } from './stripe.ts';
 import { HttpError } from './repo.ts';
 import { seedIfEmpty } from './seed.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
 
-export function createApp(db: DB, opts: { uploadDir?: string } = {}) {
+export function createApp(db: DB, opts: { uploadDir?: string; payments?: Payments } = {}) {
+  const payments = opts.payments ?? stripeFromEnv();
   const uploadDir = opts.uploadDir ?? process.env.UPLOAD_DIR ?? resolve(ROOT, 'data/uploads');
   const app = express();
   // Notes can carry several phone photos (resized client-side), so allow larger bodies.
   app.use(express.json({ limit: '40mb' }));
-  app.use('/api', createNotesApi(db, uploadDir), createTimeApi(db), createInvoicesApi(db), createTeamApi(db), createCostingApi(db), createApi(db));
+  app.use(
+    '/api',
+    createPortalApi(db, payments),
+    createNotesApi(db, uploadDir),
+    createTimeApi(db),
+    createInvoicesApi(db, payments),
+    createTeamApi(db),
+    createCostingApi(db),
+    createApi(db),
+  );
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
   app.use('/api', (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
@@ -34,7 +46,7 @@ export function createApp(db: DB, opts: { uploadDir?: string } = {}) {
   const dist = resolve(ROOT, 'dist');
   if (existsSync(dist)) {
     app.use(express.static(dist));
-    app.get(/^\/(?!api|uploads).*/, (_req, res) => res.sendFile(resolve(dist, 'index.html')));
+    app.get(/^\/(?!api\/|uploads\/).*/, (_req, res) => res.sendFile(resolve(dist, 'index.html')));
   }
   return app;
 }

@@ -236,6 +236,36 @@ CREATE TABLE IF NOT EXISTS job_costs (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS job_costs_job ON job_costs(job_id);
+-- Customer portal: single-use sign-in links and sessions. Only SHA-256 hashes of tokens are stored.
+CREATE TABLE IF NOT EXISTS portal_tokens (
+  id INTEGER PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS portal_sessions (
+  id INTEGER PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Every email the app sends (or would send, before an email service is connected).
+CREATE TABLE IF NOT EXISTS outbox (
+  id INTEGER PRIMARY KEY,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  to_address TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  link TEXT,
+  status TEXT NOT NULL DEFAULT 'queued',
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  sent_at TEXT
+);
 `;
 
 // Columns added after a table first shipped. CREATE TABLE IF NOT EXISTS won't add them to an
@@ -248,6 +278,14 @@ const ADDED_COLUMNS: [table: string, column: string, definition: string][] = [
   ['jobs', 'completed_at', 'TEXT'],
   // Rate in effect when the time was worked, so later raises don't rewrite past job costs.
   ['time_entries', 'hourly_rate', 'REAL'],
+  ['jobs', 'source', "TEXT NOT NULL DEFAULT 'office'"],
+  // When the client approved the estimate in the portal.
+  ['jobs', 'approved_at', 'TEXT'],
+  ['clients', 'portal_enabled', 'INTEGER NOT NULL DEFAULT 1'],
+  ['clients', 'portal_last_login', 'TEXT'],
+  ['clients', 'stripe_customer_id', 'TEXT'],
+  // Stripe PaymentIntent id, so a card payment is never recorded twice.
+  ['payments', 'external_id', 'TEXT'],
 ];
 
 function migrate(db: DB) {
@@ -255,6 +293,7 @@ function migrate(db: DB) {
     const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
     if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS payments_external_id ON payments(external_id)');
 }
 
 export function openDb(path: string): DB {

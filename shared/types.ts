@@ -126,6 +126,10 @@ export interface Job {
   total: number;
   /** When the job first reached Completed; revenue is recognized in this month. */
   completedAt: string | null;
+  /** 'portal' when the client requested it in the customer portal. */
+  source: 'office' | 'portal';
+  /** When the client approved the estimate in the portal. */
+  approvedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

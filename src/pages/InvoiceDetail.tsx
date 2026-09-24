@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Ban, Copy, DollarSign, Plus, Printer, Send, Trash2 } from 'lucide-react';
+import { ArrowLeft, Ban, Copy, CreditCard, DollarSign, Plus, Printer, Send, Trash2 } from 'lucide-react';
 import { api, del, patch, post, useApi } from '../api';
 import { useApp } from '../store';
 import { DEMO } from '../env';
@@ -17,6 +17,7 @@ export function InvoiceDetailPage() {
   const { data: inv, setData } = useApi<InvoiceDetail>(`/invoices/${id}`);
   const { data: company } = useApi<CompanySettings>('/settings/company');
   const [paying, setPaying] = useState(false);
+  const [charging, setCharging] = useState(false);
   const [newItem, setNewItem] = useState({ description: '', quantity: '1', unitPrice: '' });
 
   if (!inv || !company) return <div className="text-slate-400">Loading…</div>;
@@ -69,6 +70,7 @@ export function InvoiceDetailPage() {
               <DollarSign size={16} /> Record payment
             </Button>
           )}
+          {inv.status === 'sent' && app.can('manage_invoices') && <ChargeCardButton invoice={inv} open={charging} setOpen={setCharging} onPaid={(res) => (setData(res), app.announce(res))} />}
           {!DEMO && (<Button variant="secondary" onClick={() => window.print()}>
             <Printer size={16} /> Print / PDF
           </Button>)}
@@ -219,5 +221,72 @@ function PaymentForm({ invoice, onClose, onSaved }: { invoice: InvoiceDetail; on
         </div>
       </form>
     </Modal>
+  );
+}
+
+type SavedCard = { id: string; brand: string; last4: string; expMonth: number; expYear: number; isDefault: boolean };
+
+/** Charge the balance to a card the client saved in their portal. Only shows when they have one. */
+function ChargeCardButton({
+  invoice,
+  open,
+  setOpen,
+  onPaid,
+}: {
+  invoice: InvoiceDetail;
+  open: boolean;
+  setOpen: (v: boolean) => void;
+  onPaid: (res: InvoiceDetail & { automations?: string[] }) => void;
+}) {
+  const app = useApp();
+  const { data } = useApi<{ enabled: boolean; cards: SavedCard[] }>(`/clients/${invoice.clientId}/cards`);
+  const [cardId, setCardId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!data?.enabled || !data.cards.length) return null;
+  const selected = cardId ?? data.cards.find((c) => c.isDefault)?.id ?? data.cards[0].id;
+
+  async function charge() {
+    setBusy(true);
+    try {
+      const res = await post<InvoiceDetail & { automations?: string[] }>(`/invoices/${invoice.id}/charge`, { paymentMethodId: selected });
+      onPaid(res);
+      app.toast(`Charged ${money(invoice.balance)} to the card on file`);
+      setOpen(false);
+    } catch (e) {
+      app.toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <Button variant="secondary" onClick={() => setOpen(true)}>
+        <CreditCard size={16} /> Charge card on file
+      </Button>
+      {open && (
+        <Modal title={`Charge ${invoice.number}`} onClose={() => setOpen(false)}>
+          <p className="mb-3 text-sm text-slate-600">
+            Charge <b>{money(invoice.balance)}</b> to {invoice.client.name}'s saved card. They saved it in their customer portal and agreed to charges for
+            completed work.
+          </p>
+          <select id="charge-card" className="input mb-4" value={selected} onChange={(e) => setCardId(e.target.value)}>
+            {data.cards.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.brand.toUpperCase()} •••• {c.last4} (exp {String(c.expMonth).padStart(2, '0')}/{c.expYear})
+              </option>
+            ))}
+          </select>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={charge} disabled={busy}>
+              {busy ? 'Charging…' : `Charge ${money(invoice.balance)}`}
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }

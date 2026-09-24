@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Plus, Trash2, Upload } from 'lucide-react';
 import { api, del, patch, post, useApi } from '../api';
 import { resizeImage } from '../photos';
+import { relative } from '../format';
 import { DEFAULT_BRAND, DEFAULT_LOGO } from '../../shared/brand';
 import { useApp } from '../store';
 import { Button, PageHeader } from '../components/ui';
@@ -17,6 +18,7 @@ export function SettingsPage() {
       <PageHeader title="Settings" subtitle="Company info, daily checklists and divisions" />
       <CompanyEditor />
       <ChecklistTemplates />
+      <Outbox />
       <h2 className="mb-3 font-semibold">Divisions</h2>
       <div className="mb-10 space-y-4">
         {app.divisions.map((d) => (
@@ -336,6 +338,77 @@ function ChecklistTemplates() {
           <Plus size={15} /> Add
         </Button>
       </form>
+    </>
+  );
+}
+
+interface OutboxEntry {
+  id: number;
+  to: string;
+  subject: string;
+  body: string;
+  link: string | null;
+  status: 'queued' | 'sent' | 'failed' | 'not_configured';
+  error: string | null;
+  createdAt: string;
+}
+
+/** Every email the app has sent, or would have sent before an email service is connected. */
+function Outbox() {
+  const app = useApp();
+  const { data } = useApi<OutboxEntry[]>('/outbox');
+  const [open, setOpen] = useState<number | null>(null);
+  const waiting = data?.some((m) => m.status === 'not_configured');
+  return (
+    <>
+      <h2 className="mb-1 font-semibold">Email outbox</h2>
+      <p className="mb-3 text-sm text-slate-500">
+        Portal invites and sign-in links sent to clients.
+        {waiting && ' No email service is connected yet, so these are waiting here. You can copy a link and text it to the client.'}
+      </p>
+      <div className="card mb-10 divide-y divide-slate-100">
+        {!data?.length && <p className="p-4 text-sm text-slate-400">No emails yet. Adding a client with an email address sends them a portal invite.</p>}
+        {data?.map((m) => (
+          <div key={m.id} className="p-4 text-sm">
+            <button className="flex w-full items-start gap-3 text-left" onClick={() => setOpen(open === m.id ? null : m.id)}>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-medium">{m.subject}</div>
+                <div className="text-xs text-slate-500">
+                  To {m.to} · {relative(m.createdAt)}
+                </div>
+              </div>
+              <span
+                className={
+                  'shrink-0 rounded px-1.5 py-0.5 text-xs ' +
+                  (m.status === 'sent' ? 'bg-emerald-50 text-emerald-700' : m.status === 'failed' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700')
+                }
+              >
+                {m.status === 'sent' ? 'Sent' : m.status === 'failed' ? 'Failed' : m.status === 'queued' ? 'Sending' : 'Not sent'}
+              </span>
+            </button>
+            {open === m.id && (
+              <div className="mt-3 rounded-md bg-slate-50 p-3">
+                <pre className="whitespace-pre-wrap font-sans text-sm text-slate-700">{m.body.replace('{link}', m.link ? location.origin + m.link : '')}</pre>
+                {m.error && <p className="mt-2 text-xs text-rose-600">{m.error}</p>}
+                {m.link && (
+                  <Button
+                    variant="secondary"
+                    className="mt-3"
+                    onClick={() =>
+                      navigator.clipboard
+                        .writeText(location.origin + m.link)
+                        .then(() => app.toast('Link copied'))
+                        .catch(() => app.toast(location.origin + m.link))
+                    }
+                  >
+                    Copy link
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </>
   );
 }

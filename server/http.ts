@@ -5,13 +5,17 @@ import type { DB } from './db.ts';
 
 type Handler = (req: Request, res: Response) => unknown;
 
-/** Wrap a sync handler so thrown errors become JSON responses. */
+/** Wrap a handler (sync or async) so its return value is sent as JSON and thrown errors become JSON responses. */
 export const h =
   (fn: Handler) =>
   (req: Request, res: Response, next: NextFunction) => {
+    const send = (out: unknown) => {
+      if (!res.headersSent) res.json(out ?? { ok: true });
+    };
     try {
       const out = fn(req, res);
-      if (!res.headersSent) res.json(out ?? { ok: true });
+      if (out instanceof Promise) out.then(send, next);
+      else send(out);
     } catch (err) {
       next(err);
     }

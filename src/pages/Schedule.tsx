@@ -271,6 +271,7 @@ export function Schedule() {
                 <span className="rounded px-1 text-[10px] text-white" style={{ background: JOB_STATUS_META[j.status].color }}>
                   {JOB_STATUS_META[j.status].label}
                 </span>
+                {j.approvedAt && j.status === 'quoted' && <span className="rounded bg-emerald-50 px-1 text-[10px] font-medium text-emerald-700">✓ Approved</span>}
               </div>
             ))}
           </div>

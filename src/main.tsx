@@ -27,46 +27,62 @@ import { TechShell } from './tech/TechShell';
 import { TechHome } from './tech/TechHome';
 import { TechDay } from './tech/TechDay';
 import { TechJob } from './tech/TechJob';
+import { PortalApp } from './portal/PortalApp';
 
 // The demo runs inside a sandboxed frame where the URL can't carry routes.
 const Router = DEMO ? MemoryRouter : BrowserRouter;
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AppProvider>
-      <Router>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="my-work" element={<MyWork />} />
-            <Route path="jobs" element={<Jobs />} />
-            <Route path="jobs/:id" element={<JobDetailPage />} />
-            <Route path="schedule" element={<Schedule />} />
-            <Route path="clients" element={<Clients />} />
-            <Route path="clients/:id" element={<ClientDetailPage />} />
-            <Route path="boards/:id" element={<BoardPage />} />
-            <Route path="automations" element={<RequirePerm perm="manage_settings"><Automations /></RequirePerm>} />
-            <Route path="daily" element={<DailyLogs />} />
-            <Route path="daily/:userId/:date" element={<DailyLogDetail />} />
-            <Route path="timesheets" element={<Timesheets />} />
-            <Route path="invoices" element={<RequirePerm perm="view_financials"><Invoices /></RequirePerm>} />
-            <Route path="invoices/:id" element={<RequirePerm perm="view_financials"><InvoiceDetailPage /></RequirePerm>} />
-            <Route path="profitability" element={<RequirePerm perm="view_financials"><Profitability /></RequirePerm>} />
-            <Route path="team" element={<RequirePerm perm="manage_team"><Team /></RequirePerm>} />
-            <Route path="settings" element={<RequirePerm perm="manage_settings"><SettingsPage /></RequirePerm>} />
-            <Route path="*" element={<div className="text-slate-500">Page not found.</div>} />
-          </Route>
-          <Route path="tech" element={<TechShell />}>
-            <Route index element={<TechHome />} />
-            <Route path="day" element={<TechDay />} />
-            <Route path="jobs/:id" element={<TechJob />} />
-          </Route>
-          <Route path="pay/:token" element={<PublicInvoicePage />} />
-        </Routes>
-      </Router>
-    </AppProvider>
+    <Router>
+      <Routes>
+        {/* Customer-facing pages load only public branding, never office data. */}
+        <Route path="portal/*" element={<PortalApp />} />
+        <Route path="pay/:token" element={<PublicInvoicePage />} />
+        <Route
+          path="*"
+          element={
+            <AppProvider>
+              <OfficeRoutes />
+            </AppProvider>
+          }
+        />
+      </Routes>
+    </Router>
   </StrictMode>,
 );
+
+function OfficeRoutes() {
+  return (
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<Dashboard />} />
+        <Route path="my-work" element={<MyWork />} />
+        <Route path="jobs" element={<Jobs />} />
+        <Route path="jobs/:id" element={<JobDetailPage />} />
+        <Route path="schedule" element={<Schedule />} />
+        <Route path="clients" element={<Clients />} />
+        <Route path="clients/:id" element={<ClientDetailPage />} />
+        <Route path="boards/:id" element={<BoardPage />} />
+        <Route path="automations" element={<RequirePerm perm="manage_settings"><Automations /></RequirePerm>} />
+        <Route path="daily" element={<DailyLogs />} />
+        <Route path="daily/:userId/:date" element={<DailyLogDetail />} />
+        <Route path="timesheets" element={<Timesheets />} />
+        <Route path="invoices" element={<RequirePerm perm="view_financials"><Invoices /></RequirePerm>} />
+        <Route path="invoices/:id" element={<RequirePerm perm="view_financials"><InvoiceDetailPage /></RequirePerm>} />
+        <Route path="profitability" element={<RequirePerm perm="view_financials"><Profitability /></RequirePerm>} />
+        <Route path="team" element={<RequirePerm perm="manage_team"><Team /></RequirePerm>} />
+        <Route path="settings" element={<RequirePerm perm="manage_settings"><SettingsPage /></RequirePerm>} />
+        <Route path="*" element={<div className="text-slate-500">Page not found.</div>} />
+      </Route>
+      <Route path="tech" element={<TechShell />}>
+        <Route index element={<TechHome />} />
+        <Route path="day" element={<TechDay />} />
+        <Route path="jobs/:id" element={<TechJob />} />
+      </Route>
+    </Routes>
+  );
+}
 
 // Offline shell + "Add to Home Screen" support for the tech app.
 if ('serviceWorker' in navigator && import.meta.env.PROD && !DEMO) {

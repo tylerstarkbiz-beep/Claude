@@ -123,6 +123,12 @@ export function Jobs() {
                         {money$ && <span className="font-medium text-slate-600">{money(j.total)}</span>}
                       </div>
                       <div className="text-sm font-medium leading-snug">{j.title}</div>
+                      {(j.approvedAt || j.source === 'portal') && (
+                        <div className="mt-1 flex gap-1">
+                          {j.approvedAt && j.status === 'quoted' && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">✓ Client approved</span>}
+                          {j.source === 'portal' && <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700">From portal</span>}
+                        </div>
+                      )}
                       <div className="mt-1 text-xs text-slate-500">{clientName.get(j.clientId)}</div>
                       <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
                         <span>{j.scheduledStart ? dateTime(j.scheduledStart) : 'Unscheduled'}</span>

@@ -7,19 +7,22 @@ import { createTimeApi } from '../server/time.ts';
 import { createInvoicesApi } from '../server/invoices.ts';
 import { createTeamApi } from '../server/team.ts';
 import { createCostingApi } from '../server/costing.ts';
+import { createPortalApi } from '../server/portal.ts';
+import { stripeFromEnv } from '../server/stripe.ts';
 import { uploads } from './shims/fs.ts';
 import type { DemoRouter, Route } from './shims/express.ts';
 
 export function startDemoServer() {
   const db = openDb(':memory:');
   seed(db);
-  const routers = [createNotesApi(db, '/uploads'), createTimeApi(db), createInvoicesApi(db), createTeamApi(db), createCostingApi(db), createApi(db)] as unknown as DemoRouter[];
+  const pay = stripeFromEnv(); // no keys in the demo, so card payments show as not set up
+  const routers = [createPortalApi(db, pay), createNotesApi(db, '/uploads'), createTimeApi(db), createInvoicesApi(db, pay), createTeamApi(db), createCostingApi(db), createApi(db)] as unknown as DemoRouter[];
   const routes: Route[] = routers.flatMap((r) => r.routes);
 
-  function dispatch(method: string, url: string, body: unknown): Promise<{ status: number; data: unknown }> {
+  function dispatch(method: string, url: string, body: unknown, headers: Record<string, string>): Promise<{ status: number; data: unknown }> {
     const u = new URL(url, 'http://demo');
     const path = u.pathname.replace(/^\/api/, '');
-    const req: any = { method, path, query: Object.fromEntries(u.searchParams), body: body ?? {}, params: {} };
+    const req: any = { method, path, query: Object.fromEntries(u.searchParams), body: body ?? {}, params: {}, headers, get: (name: string) => headers[name.toLowerCase()] };
     const fail = (err: any) => ({ status: typeof err?.status === 'number' ? err.status : 500, data: { error: err?.message ?? 'Error' } });
     return new Promise((resolve) => {
       let i = 0;
@@ -61,7 +64,8 @@ export function startDemoServer() {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     if (!url.startsWith('/api')) return realFetch(input, init);
     const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
-    const { status, data } = await dispatch((init?.method ?? 'GET').toUpperCase(), url, body);
+    const headers = Object.fromEntries([...new Headers(init?.headers).entries()].map(([k, v]) => [k.toLowerCase(), v]));
+    const { status, data } = await dispatch((init?.method ?? 'GET').toUpperCase(), url, body, headers);
     // Photo URLs point at in-memory blobs.
     const text = JSON.stringify(data ?? { ok: true }).replace(/\/uploads\/([\w.-]+)/g, (m, name) => uploads.get(name) ?? m);
     return new Response(text, { status, headers: { 'content-type': 'application/json' } });

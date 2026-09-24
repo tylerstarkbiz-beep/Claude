@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import clsx from 'clsx';
-import { ArrowLeft, Mail, MapPin, Phone, Plus, Receipt, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Mail, MapPin, Phone, Plus, Receipt, Trash2 } from 'lucide-react';
 import { del, patch, post, useApi } from '../api';
 import { useApp } from '../store';
 import { hm, money, relative, shortDate, todayISO } from '../format';
@@ -57,6 +57,7 @@ export function JobDetailPage() {
           <div className="mb-1 flex items-center gap-2 text-sm text-slate-500">
             <span className="font-mono">{job.number}</span>
             <DivisionBadge division={division} />
+            {job.source === 'portal' && <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">Requested in portal</span>}
           </div>
           <input
             key={job.title}
@@ -78,6 +79,14 @@ export function JobDetailPage() {
         </div>
       </div>
 
+      {job.approvedAt && job.status === 'quoted' && (
+        <div className="mb-6 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <CheckCircle2 size={18} />
+          <span>
+            <b>{job.client.name}</b> approved this estimate in the customer portal on {shortDate(job.approvedAt.slice(0, 10))}. Schedule it to move it forward.
+          </span>
+        </div>
+      )}
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">
           <section className="card p-5">

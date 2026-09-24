@@ -6,6 +6,7 @@ import { h, id, optNum, patch, required } from './http.ts';
 import { setJobStatus } from './automations.ts';
 import { HttpError, getClient, getJob, localDate, mapLineItem } from './repo.ts';
 import { DEFAULT_BRAND, DEFAULT_LOGO } from '../shared/brand.ts';
+import { assertOwnCard, ensureCustomer, listCards, type Payments } from './stripe.ts';
 import { PAYMENT_METHODS, type CompanySettings, type Invoice, type InvoiceDetail, type InvoiceItem, type Payment } from '../shared/types.ts';
 
 type Row = Record<string, any>;
@@ -70,13 +71,13 @@ function mapInvoice(r: Row): Invoice {
 const mapItem = (r: Row): InvoiceItem => ({ id: r.id, invoiceId: r.invoice_id, description: r.description, quantity: r.quantity, unitPrice: r.unit_price });
 const mapPayment = (r: Row): Payment => ({ id: r.id, invoiceId: r.invoice_id, amount: r.amount, method: r.method, paidOn: r.paid_on, note: r.note });
 
-function getInvoice(db: DB, invoiceId: number): Invoice {
+export function getInvoice(db: DB, invoiceId: number): Invoice {
   const row = db.prepare(`${INVOICE_SELECT} WHERE i.id = ?`).get(invoiceId);
   if (!row) throw new HttpError(404, 'Invoice not found');
   return mapInvoice(row);
 }
 
-function getDetail(db: DB, invoiceId: number): InvoiceDetail {
+export function getDetail(db: DB, invoiceId: number): InvoiceDetail {
   const inv = getInvoice(db, invoiceId);
   return {
     ...inv,
@@ -106,7 +107,82 @@ function reconcile(db: DB, invoiceId: number): string[] {
   return [];
 }
 
-export function createInvoicesApi(db: DB): Router {
+/** Record a payment and settle the invoice (and its job) when the balance reaches zero. */
+export function recordPayment(
+  db: DB,
+  invoiceId: number,
+  p: { amount: number; method?: string; paidOn?: string; note?: string | null; externalId?: string | null },
+) {
+  const inv = getInvoice(db, invoiceId);
+  if (inv.status === 'draft' || inv.status === 'void') throw new HttpError(409, `Can't record a payment on a ${inv.status} invoice`);
+  const amount = cents(Number(p.amount));
+  if (!(amount > 0)) throw new HttpError(400, 'Payment amount must be greater than 0');
+  const method = PAYMENT_METHODS.includes(p.method as (typeof PAYMENT_METHODS)[number]) ? p.method! : 'Other';
+  return tx(db, () => {
+    db.prepare('INSERT INTO payments (invoice_id, amount, method, paid_on, note, external_id) VALUES (?, ?, ?, ?, ?, ?)').run(
+      inv.id,
+      amount,
+      method,
+      p.paidOn || localDate(),
+      p.note || null,
+      p.externalId ?? null,
+    );
+    if (inv.jobId) logActivity(db, 'invoice', `Recorded $${amount.toFixed(2)} ${method} payment on ${inv.number}`, { jobId: inv.jobId });
+    const automations = reconcile(db, inv.id);
+    return { ...getDetail(db, inv.id), automations };
+  });
+}
+
+/**
+ * Charge an invoice's balance to a saved card. Returns requiresAction when the bank wants the
+ * cardholder to confirm (3-D Secure); the portal finishes that with Stripe.js and calls confirmCardPayment.
+ */
+export async function chargeInvoice(
+  db: DB,
+  pay: Payments,
+  invoiceId: number,
+  clientId: number,
+  paymentMethodId: string,
+  opts: { offSession: boolean },
+): Promise<{ requiresAction: false; automations: string[] } | { requiresAction: true; clientSecret: string }> {
+  if (!pay.enabled) throw new HttpError(503, 'Card payments are not set up');
+  const inv = getInvoice(db, invoiceId);
+  if (inv.clientId !== clientId) throw new HttpError(404, 'Invoice not found');
+  if (inv.status !== 'sent' || inv.balance <= 0) throw new HttpError(409, 'This invoice has nothing to pay');
+  const customerId = await ensureCustomer(db, pay, clientId);
+  await assertOwnCard(pay, customerId, paymentMethodId);
+  const amountCents = Math.round(inv.balance * 100);
+  const paidCount = (db.prepare('SELECT COUNT(*) AS n FROM payments WHERE invoice_id = ?').get(inv.id) as { n: number }).n;
+  const pi = await pay.call(
+    'POST',
+    '/v1/payment_intents',
+    {
+      amount: amountCents,
+      currency: 'usd',
+      customer: customerId,
+      payment_method: paymentMethodId,
+      confirm: true,
+      off_session: opts.offSession ? true : undefined,
+      description: `${inv.number}`,
+      metadata: { invoice_id: inv.id, client_id: clientId },
+      ...(opts.offSession ? {} : { automatic_payment_methods: { enabled: true, allow_redirects: 'never' } }),
+    },
+    // Same invoice, same balance, same payment count → the same charge, so retries can't double-charge.
+    `invoice-${inv.id}-${amountCents}-${paidCount}-${paymentMethodId}`,
+  );
+  if (pi.status === 'requires_action') return { requiresAction: true, clientSecret: pi.client_secret };
+  if (pi.status !== 'succeeded') throw new HttpError(402, 'The card was not charged. Try another card.');
+  return { requiresAction: false, automations: settleIntent(db, inv.id, pi).automations };
+}
+
+/** Record a succeeded PaymentIntent once (by its id). */
+export function settleIntent(db: DB, invoiceId: number, pi: { id: string; amount_received?: number; amount: number }) {
+  const existing = db.prepare('SELECT id FROM payments WHERE external_id = ?').get(pi.id);
+  if (existing) return { ...getDetail(db, invoiceId), automations: [] as string[] };
+  return recordPayment(db, invoiceId, { amount: (pi.amount_received ?? pi.amount) / 100, method: 'Card', note: 'Paid by card (Stripe)', externalId: pi.id });
+}
+
+export function createInvoicesApi(db: DB, pay: Payments): Router {
   const api = Router();
 
   api.get(
@@ -287,24 +363,35 @@ export function createInvoicesApi(db: DB): Router {
 
   api.post(
     '/invoices/:id/payments',
-    h((req) => {
+    h((req) =>
+      recordPayment(db, id(req), {
+        amount: Number(req.body.amount),
+        method: req.body.method,
+        paidOn: req.body.paidOn,
+        note: req.body.note,
+      }),
+    ),
+  );
+
+  /** Office: saved cards for a client (for "Charge card on file"). */
+  api.get(
+    '/clients/:id/cards',
+    h(async (req) => {
+      if (!pay.enabled) return { enabled: false, cards: [] };
+      const c = db.prepare('SELECT stripe_customer_id FROM clients WHERE id = ?').get(id(req)) as { stripe_customer_id: string | null } | undefined;
+      if (!c) throw new HttpError(404, 'Client not found');
+      return { enabled: true, cards: c.stripe_customer_id ? await listCards(pay, c.stripe_customer_id) : [] };
+    }),
+  );
+
+  /** Office: charge the balance to a card the client saved in their portal. */
+  api.post(
+    '/invoices/:id/charge',
+    h(async (req) => {
       const inv = getInvoice(db, id(req));
-      if (inv.status === 'draft' || inv.status === 'void') throw new HttpError(409, `Can't record a payment on a ${inv.status} invoice`);
-      const amount = cents(Number(req.body.amount));
-      if (!(amount > 0)) throw new HttpError(400, 'Payment amount must be greater than 0');
-      const method = PAYMENT_METHODS.includes(req.body.method) ? req.body.method : 'Other';
-      return tx(db, () => {
-        db.prepare('INSERT INTO payments (invoice_id, amount, method, paid_on, note) VALUES (?, ?, ?, ?, ?)').run(
-          inv.id,
-          amount,
-          method,
-          req.body.paidOn || localDate(),
-          req.body.note || null,
-        );
-        if (inv.jobId) logActivity(db, 'invoice', `Recorded $${amount.toFixed(2)} ${method} payment on ${inv.number}`, { jobId: inv.jobId });
-        const automations = reconcile(db, inv.id);
-        return { ...getDetail(db, inv.id), automations };
-      });
+      const res = await chargeInvoice(db, pay, inv.id, inv.clientId, String(req.body.paymentMethodId ?? ''), { offSession: true });
+      if (res.requiresAction) throw new HttpError(402, 'The bank needs the client to approve this charge. Ask them to pay from their portal.');
+      return { ...getDetail(db, inv.id), automations: res.automations };
     }),
   );
 

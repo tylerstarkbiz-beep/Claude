@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Plus } from 'lucide-react';
-import { patch, useApi } from '../api';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Copy, ExternalLink, Globe, Mail, Plus } from 'lucide-react';
+import { patch, post, useApi } from '../api';
+import { DEMO } from '../env';
 import { useApp } from '../store';
-import { dateTime, money } from '../format';
+import { dateTime, money, relative } from '../format';
 import { Button, DivisionBadge, Pill } from '../components/ui';
 import { JobForm } from '../components/JobForm';
 import { JOB_STATUS_META, type Client, type Job } from '../../shared/types';
@@ -50,23 +51,26 @@ export function ClientDetailPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
-        <section className="card space-y-3 p-5">
-          {field('name', 'Name')}
-          {field('company', 'Company')}
-          {field('phone', 'Phone')}
-          {field('email', 'Email')}
-          {field('address', 'Address')}
-          <div>
-            <span className="label">Notes</span>
-            <textarea
-              className="input"
-              rows={4}
-              key={client.notes}
-              defaultValue={client.notes ?? ''}
-              onBlur={(e) => e.target.value !== (client.notes ?? '') && save({ notes: e.target.value })}
-            />
-          </div>
-        </section>
+        <div className="space-y-6">
+          <section className="card space-y-3 p-5">
+            {field('name', 'Name')}
+            {field('company', 'Company')}
+            {field('phone', 'Phone')}
+            {field('email', 'Email')}
+            {field('address', 'Address')}
+            <div>
+              <span className="label">Notes</span>
+              <textarea
+                className="input"
+                rows={4}
+                key={client.notes}
+                defaultValue={client.notes ?? ''}
+                onBlur={(e) => e.target.value !== (client.notes ?? '') && save({ notes: e.target.value })}
+              />
+            </div>
+          </section>
+          <PortalCard client={client} />
+        </div>
 
         <section className="card p-5">
           <h2 className="mb-3 font-semibold">Job history (all divisions)</h2>
@@ -90,5 +94,115 @@ export function ClientDetailPage() {
       </div>
       {creating && <JobForm onClose={() => setCreating(false)} clientId={client.id} />}
     </div>
+  );
+}
+
+interface PortalStatus {
+  enabled: boolean;
+  lastLogin: string | null;
+  emails: {
+    id: number;
+    subject: string;
+    status: string;
+    createdAt: string;
+    link: string | null;
+  }[];
+}
+
+const EMAIL_STATUS: Record<string, string> = {
+  sent: 'Sent',
+  queued: 'Sending…',
+  failed: 'Failed to send',
+  not_configured: 'Not sent: email service not connected',
+};
+
+/** The client's customer portal: status, sign-in link, invite emails. */
+function PortalCard({ client }: { client: Client }) {
+  const app = useApp();
+  const navigate = useNavigate();
+  const { data, setData, reload } = useApi<PortalStatus>(`/clients/${client.id}/portal`);
+  if (!data) return null;
+
+  const link = async () => (await post<{ link: string }>(`/clients/${client.id}/portal/link`, {})).link;
+
+  async function preview() {
+    const path = await link();
+    if (DEMO) navigate(path);
+    else window.open(path, '_blank', 'noopener');
+  }
+  async function copy() {
+    const url = location.origin + (await link());
+    navigator.clipboard
+      .writeText(url)
+      .then(() => app.toast('Sign-in link copied. It works once and expires in 7 days.'))
+      .catch(() => app.toast(url));
+  }
+  async function invite() {
+    try {
+      await post(`/clients/${client.id}/portal/invite`, {});
+      app.toast(`Portal invite created for ${client.email}`);
+      reload();
+    } catch (e) {
+      app.toast((e as Error).message, 'error');
+    }
+  }
+
+  return (
+    <section className="card p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="flex items-center gap-2 font-semibold">
+          <Globe size={17} className="text-brand-600" /> Customer portal
+        </h2>
+        <label className="flex items-center gap-2 text-xs text-slate-500">
+          <input
+            type="checkbox"
+            checked={data.enabled}
+            onChange={async (e) =>
+              setData({
+                ...data,
+                ...(await patch<{ enabled: boolean }>(`/clients/${client.id}/portal`, { enabled: e.target.checked })),
+              })
+            }
+          />
+          {data.enabled ? 'On' : 'Off'}
+        </label>
+      </div>
+      {data.enabled ? (
+        <>
+          <p className="mb-3 text-sm text-slate-500">
+            {data.lastLogin ? `Last signed in ${relative(data.lastLogin)}.` : 'Has not signed in yet.'} Clients sign in with an emailed link; there's no
+            password.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={preview}>
+              <ExternalLink size={15} /> View as client
+            </Button>
+            <Button variant="secondary" onClick={copy}>
+              <Copy size={15} /> Copy sign-in link
+            </Button>
+            {client.email && (
+              <Button variant="secondary" onClick={invite}>
+                <Mail size={15} /> Email invite
+              </Button>
+            )}
+          </div>
+          {!client.email && <p className="mt-2 text-xs text-amber-600">Add an email address so this client can get invites and sign-in links.</p>}
+          {data.emails.length > 0 && (
+            <div className="mt-4 space-y-1.5 border-t border-slate-100 pt-3">
+              {data.emails.map((m) => (
+                <div key={m.id} className="text-xs">
+                  <div className="font-medium text-slate-700">{m.subject}</div>
+                  <div className={m.status === 'sent' ? 'text-emerald-600' : m.status === 'failed' ? 'text-rose-600' : 'text-slate-500'}>
+                    {EMAIL_STATUS[m.status] ?? m.status} · {relative(m.createdAt)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="text-sm text-slate-500">The portal is off for this client. Turning it off signed them out and cancelled any unused links.</p>
+      )}
+    </section>
   );
 }

@@ -66,6 +66,8 @@ export const mapJob = (r: Row): Job => ({
   customFields: JSON.parse(r.custom_fields),
   total: r.total ?? 0,
   completedAt: r.completed_at ?? null,
+  source: r.source ?? 'office',
+  approvedAt: r.approved_at ?? null,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
