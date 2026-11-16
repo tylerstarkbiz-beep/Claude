@@ -8,6 +8,7 @@ import { createNotesApi } from './notes.ts';
 import { createTimeApi } from './time.ts';
 import { createTeamApi } from './team.ts';
 import { createCostingApi } from './costing.ts';
+import { createEarningsApi } from './earnings.ts';
 import { createPortalApi } from './portal.ts';
 import { createTextingApi, runScheduledTexts } from './texting.ts';
 import { stripeFromEnv, type Payments } from './stripe.ts';
@@ -31,6 +32,7 @@ export function createApp(db: DB, opts: { uploadDir?: string; payments?: Payment
     createInvoicesApi(db, payments),
     createTeamApi(db),
     createCostingApi(db),
+    createEarningsApi(db),
     createApi(db),
   );
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));

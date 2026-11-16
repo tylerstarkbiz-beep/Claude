@@ -5,6 +5,20 @@ import { dirname } from 'node:path';
 export type DB = DatabaseSync;
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS earnings (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  job_id INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('commission', 'tip')),
+  amount REAL NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  earned_on TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  paid_out_at TEXT
+);
+CREATE INDEX IF NOT EXISTS earnings_user_month ON earnings(user_id, earned_on);
+CREATE INDEX IF NOT EXISTS earnings_job ON earnings(job_id);
 CREATE TABLE IF NOT EXISTS divisions (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
@@ -314,6 +328,8 @@ const ADDED_COLUMNS: [table: string, column: string, definition: string][] = [
   ['jobs', 'deposit_percent', 'REAL'],
   // 'deposit' invoices are collected when an estimate is approved and credited on the final invoice.
   ['invoices', 'kind', "TEXT NOT NULL DEFAULT 'standard'"],
+  // Default commission % of the job total.
+  ['users', 'commission_rate', 'REAL NOT NULL DEFAULT 0'],
 ];
 
 function migrate(db: DB) {
@@ -328,8 +344,15 @@ export function openDb(path: string): DB {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
+  const hadUsers = !!db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'users'").get();
+  const hadEarnings = !!db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'earnings'").get();
   db.exec(SCHEMA);
   migrate(db);
+  // Existing databases: owners get the new commissions & tips permission once, when the feature arrives.
+  if (hadUsers && !hadEarnings) {
+    db.exec(`UPDATE users SET permissions = json_insert(permissions, '$[#]', 'manage_pay')
+             WHERE role = 'owner' AND NOT EXISTS (SELECT 1 FROM json_each(users.permissions) WHERE value = 'manage_pay')`);
+  }
   return db;
 }
 

@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api } from './api';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { api, setActingUser } from './api';
 import { userCan, type Board, type CompanySettings, type Division, type Permission, type User } from '../shared/types';
 import { DEFAULT_BRAND, DEFAULT_LOGO, DEFAULT_MARK } from '../shared/brand';
 import { applyBrand } from './brand';
@@ -81,11 +81,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [company, setCompany] = useState<CompanySettings | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [divisionId, setDivisionIdState] = useState<number | null>(() => stored('fb.division'));
-  const [currentUserId, setCurrentUserIdState] = useState<number | null>(() => stored('fb.user'));
+  const [currentUserId, setCurrentUserIdState] = useState<number | null>(() => {
+    const id = stored('fb.user');
+    setActingUser(id);
+    return id;
+  });
+  // Who /bootstrap was loaded as; it hides other people's pay rates, so reload when that changes.
+  const [loadedAs, setLoadedAs] = useState<number | null | undefined>(undefined);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const currentUserRef = useRef(currentUserId);
 
   const reload = useCallback(async () => {
+    const as = currentUserRef.current;
+    setActingUser(as);
     const data = await api<{ divisions: Division[]; users: User[]; boards: Board[]; company: CompanySettings }>('/bootstrap');
+    setLoadedAs(as);
     setCompany(data.company);
     setDivisions(data.divisions);
     setUsers(data.users);
@@ -94,6 +104,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCurrentUserIdState((cur) => (cur && data.users.some((u) => u.id === cur && u.active) ? cur : (data.users.find((u) => u.active)?.id ?? null)));
     setDivisionIdState((cur) => (cur && data.divisions.some((d) => d.id === cur) ? cur : null));
   }, []);
+
+  useEffect(() => {
+    currentUserRef.current = currentUserId;
+    setActingUser(currentUserId);
+    if (loadedAs !== undefined && loadedAs !== currentUserId) reload();
+  }, [currentUserId, loadedAs, reload]);
 
   useEffect(() => {
     reload();

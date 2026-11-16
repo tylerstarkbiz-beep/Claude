@@ -51,7 +51,8 @@ export function jobCosting(db: DB, jobId: number): JobCosting {
 
   const laborCost = cents(labor.reduce((a, l) => a + l.cost, 0));
   const otherCosts = cents(costs.reduce((a, c) => a + c.amount, 0));
-  const totalCost = cents(laborCost + otherCosts);
+  const commissions = cents((db.prepare("SELECT COALESCE(SUM(amount), 0) AS n FROM earnings WHERE job_id = ? AND kind = 'commission'").get(jobId) as Row).n);
+  const totalCost = cents(laborCost + otherCosts + commissions);
   const profit = cents(job.total - totalCost);
   return {
     revenue: job.total,
@@ -61,6 +62,7 @@ export function jobCosting(db: DB, jobId: number): JobCosting {
     labor,
     costs,
     otherCosts,
+    commissions,
     totalCost,
     profit,
     margin: margin(profit, job.total),
@@ -99,7 +101,8 @@ export function profitRows(db: DB, f: ProfitFilter = {}): ProfitRow[] {
          COALESCE((SELECT SUM(quantity * unit_price) FROM line_items li WHERE li.job_id = j.id), 0) AS revenue,
          COALESCE((SELECT SUM(${MINUTES}) FROM time_entries te JOIN users u ON u.id = te.user_id WHERE te.job_id = j.id), 0) AS labor_minutes,
          COALESCE((SELECT SUM(${MINUTES} / 60.0 * ${RATE}) FROM time_entries te JOIN users u ON u.id = te.user_id WHERE te.job_id = j.id), 0) AS labor_cost,
-         COALESCE((SELECT SUM(amount) FROM job_costs c WHERE c.job_id = j.id), 0) AS other_costs
+         COALESCE((SELECT SUM(amount) FROM job_costs c WHERE c.job_id = j.id), 0) AS other_costs,
+         COALESCE((SELECT SUM(amount) FROM earnings e WHERE e.job_id = j.id AND e.kind = 'commission'), 0) AS commissions
        FROM jobs j WHERE ${where.join(' AND ')} AND j.status != 'cancelled'
        ORDER BY COALESCE(j.completed_at, j.scheduled_start) DESC`,
     )
@@ -109,7 +112,8 @@ export function profitRows(db: DB, f: ProfitFilter = {}): ProfitRow[] {
     const revenue = cents(r.revenue);
     const laborCost = cents(r.labor_cost);
     const otherCosts = cents(r.other_costs);
-    const profit = cents(revenue - laborCost - otherCosts);
+    const commissions = cents(r.commissions);
+    const profit = cents(revenue - laborCost - otherCosts - commissions);
     return {
       jobId: r.id,
       number: r.number,
@@ -122,6 +126,7 @@ export function profitRows(db: DB, f: ProfitFilter = {}): ProfitRow[] {
       laborMinutes: Math.round(r.labor_minutes),
       laborCost,
       otherCosts,
+      commissions,
       profit,
       margin: margin(profit, revenue),
     };

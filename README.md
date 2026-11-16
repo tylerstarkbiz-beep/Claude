@@ -13,8 +13,9 @@ FieldBoard puts both in one app and connects them with automations. It is built 
 | --- | --- |
 | **Divisions** | Every job, board, tech and KPI belongs to a division. The top bar switches between *All divisions* and each division. Every division has its own color, job-number prefix (`RST-`, `JNK-`, `JAN-`, `HVC-`) and **custom job fields** (Restoration: claim #, carrier, adjuster, loss type · HVAC: equipment, model/serial, maintenance plan · Junk: load size · Janitorial: frequency, sq ft, contract end). Edit them in Settings. |
 | **Dashboard** | Company-wide or per-division numbers: open jobs, today's schedule, revenue this month (jobs *completed* this month), unpaid invoices, and open and overdue tasks. **Click any number** (the top tiles or a division card's rows) to see the jobs or tasks behind it; the revenue list includes each job's cost, profit and margin. Also shows who's on the clock, the pipeline, upcoming jobs and an activity feed. |
-| **Team** | Add and edit members, including role, divisions, phone, and **loaded hourly cost** (wage plus payroll taxes, workers' comp, benefits). **Permissions** are pre-filled from the role and adjustable per person: see financials, invoice & collect, manage jobs, approve time & logs, manage team, company settings. Members who leave are marked inactive, so their history stays. |
+| **Team** | Add and edit members, including role, divisions, phone, and **loaded hourly cost** (wage plus payroll taxes, workers' comp, benefits). **Permissions** are pre-filled from the role and adjustable per person: see financials, invoice & collect, manage jobs, approve time & logs, manage team, company settings, commissions & tips. Members who leave are marked inactive, so their history stays. |
 | **Job costing** | Every job shows revenue (line items) against **labor**, which is tracked time × each person's hourly cost. The rate is saved on each time entry, so a raise doesn't rewrite past jobs. **Materials & other costs** are entered by category (materials, equipment rental, subcontractor, dump fees, permits, fuel). The result is profit and margin. **Profitability** reports by job and division for this month, last month, 90 days, the year or all time, optionally including jobs still in progress. |
+| **Commissions & tips** | Every tech has a private **earnings tracker** (office: *Commissions & Tips*; tech app: *My Pay*). It shows what they've earned this month on top of hourly pay, split into commissions and tips, plus what's still owed and a six-month trend. Commissions are logged from a job (pre-filled from the tech's **commission %**, set on the Team page) by people with the *Commissions & tips* permission. Techs can log their own cash tips. **Each person sees only their own tracker.** Owners and admins see the whole team and can mark earnings paid out after payroll. The server checks every earnings request against who is asking, and other people's pay rates aren't sent to techs' screens. Commissions count as a job cost in job costing and profitability. Tips don't, since the customer pays them. |
 | **Jobs** | Drag-and-drop pipeline (Request → Quoted → Scheduled → In Progress → Completed → Invoiced → Paid) plus a list view. The job page covers the client, schedule, assigned tech, division fields, editable line items with totals, linked tasks and activity. |
 | **Schedule** | **Day, week and month** views. Day is a dispatch board with a column per tech plus Unassigned; week is seven days by hour; month is a calendar. **Drag a job** to change its day and time (15-minute steps, length kept). In day view, drag it into another tech's column to reassign it, and drag its bottom edge to change the end time. Drag jobs from the **Needs scheduling** tray onto the calendar to book them. Crew chips filter the calendar. Rescheduling needs the *Manage jobs* permission. |
 | **Clients** | One customer record shared by all divisions, with cross-division job history and lifetime revenue. |
@@ -90,6 +91,7 @@ server/notes.ts        Job notes + photo uploads (stored in data/uploads)
 server/invoices.ts     Invoices, payments, client links, company settings
 server/team.ts         Team members, hourly rates, permissions
 server/costing.ts      Job costing and the profitability report
+server/earnings.ts     Commissions & tips: private per-person trackers, logging rules, payouts
 server/portal.ts       Customer portal: sign-in links, sessions, client-scoped data, signatures
 server/texting.ts      Text wording, office texts, and the reminder / follow-up scheduler
 server/stripe.ts       Stripe (saved cards, payments); server/mailer.ts: email + text outbox
@@ -112,8 +114,9 @@ and it launches full-screen like a native app. Until logins exist, techs pick th
 This is a working MVP. Before running the business on it, these are the next things to build, roughly in priority
 order:
 
-1. **Authentication.** Right now the "Viewing as" menu stands in for login. Permissions are applied in the screens,
-   but the server doesn't check who is asking until there are real logins. Photo and invoice links are also unauthenticated.
+1. **Authentication.** Right now the "Viewing as" menu stands in for login. Most permissions are applied only in the
+   screens. Commissions & tips are checked on the server, but against the "Viewing as" person, which anyone can change,
+   so that rule is only airtight once there are real logins. Photo and invoice links are also unauthenticated.
 2. **Hosting.** Run it on a server with HTTPS (needed for phone installs and camera access), backups, and Postgres plus
    cloud photo storage once multiple offices use it.
 3. **Connect Twilio, SendGrid and Stripe** (see above) and test each with real accounts. The payment code is tested

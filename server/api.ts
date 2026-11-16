@@ -1,3 +1,4 @@
+import { actingUser, visibleUser } from './earnings.ts';
 import { Router } from 'express';
 import { assertOneOf, h, id, optNum, patch, required } from './http.ts';
 import { logActivity, tx, type DB } from './db.ts';
@@ -43,9 +44,12 @@ export function createApi(db: DB): Router {
   // ---------- Bootstrap / reference data ----------
   api.get(
     '/bootstrap',
-    h(() => ({
+    h((req) => ({
       divisions: db.prepare('SELECT * FROM divisions ORDER BY id').all().map(mapDivision),
-      users: db.prepare('SELECT * FROM users ORDER BY name').all().map(mapUser),
+      users: db
+        .prepare('SELECT * FROM users ORDER BY name')
+        .all()
+        .map((r) => visibleUser(actingUser(db, req), mapUser(r))),
       boards: db.prepare('SELECT * FROM boards ORDER BY division_id IS NULL, division_id, name').all().map(mapBoard),
       company: getCompany(db),
     })),

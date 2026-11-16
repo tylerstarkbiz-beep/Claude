@@ -12,6 +12,12 @@ function cleanPermissions(v: unknown): Permission[] {
   return PERMISSIONS.filter((p) => v.includes(p));
 }
 
+function percent(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 100) throw new HttpError(400, 'Commission must be between 0 and 100%');
+  return Math.round(n * 100) / 100;
+}
+
 function rate(v: unknown): number {
   const n = Number(v);
   if (!Number.isFinite(n) || n < 0) throw new HttpError(400, 'Hourly rate must be 0 or more');
@@ -44,7 +50,7 @@ export function createTeamApi(db: DB): Router {
       const email = required(b, 'email').toLowerCase();
       if (db.prepare('SELECT 1 FROM users WHERE lower(email) = ?').get(email)) throw new HttpError(409, 'Someone on the team already uses that email');
       const r = db
-        .prepare('INSERT INTO users (name, email, phone, role, color, division_ids, hourly_rate, permissions) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .prepare('INSERT INTO users (name, email, phone, role, color, division_ids, hourly_rate, commission_rate, permissions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(
           required(b, 'name'),
           email,
@@ -53,6 +59,7 @@ export function createTeamApi(db: DB): Router {
           b.color ?? '#64748b',
           JSON.stringify(b.divisionIds ?? []),
           rate(b.hourlyRate ?? 0),
+          percent(b.commissionRate ?? 0),
           JSON.stringify(b.permissions ? cleanPermissions(b.permissions) : ROLE_DEFAULTS[role]),
         );
       return get(Number(r.lastInsertRowid));
@@ -78,6 +85,7 @@ export function createTeamApi(db: DB): Router {
           color: 'color',
           divisionIds: (v) => ['division_ids', JSON.stringify(Array.isArray(v) ? v.map(Number) : [])],
           hourlyRate: (v) => ['hourly_rate', rate(v)],
+          commissionRate: (v) => ['commission_rate', percent(v)],
           permissions: (v) => ['permissions', JSON.stringify(cleanPermissions(v))],
           active: (v) => ['active', v ? 1 : 0],
         });

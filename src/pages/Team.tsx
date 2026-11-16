@@ -25,6 +25,7 @@ const blank = (): Draft => ({
   color: COLORS[Math.floor(Math.random() * COLORS.length)],
   divisionIds: [],
   hourlyRate: 0,
+  commissionRate: 0,
   permissions: [...ROLE_DEFAULTS.technician],
   active: true,
 });
@@ -57,6 +58,7 @@ export function Team() {
               <th className="px-4 py-3">Role</th>
               <th className="px-4 py-3">Divisions</th>
               <th className="px-4 py-3 text-right">Hourly cost</th>
+              <th className="px-4 py-3 text-right">Commission</th>
               <th className="px-4 py-3">Permissions</th>
             </tr>
           </thead>
@@ -93,6 +95,7 @@ export function Team() {
                   </div>
                 </td>
                 <td className="px-4 py-3 text-right font-medium tabular-nums">{u.hourlyRate ? `${money(u.hourlyRate)}/hr` : <span className="text-amber-600">Not set</span>}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{u.commissionRate ? `${u.commissionRate}%` : <span className="text-slate-400">—</span>}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
                     {u.permissions.length === PERMISSIONS.length ? (
@@ -141,7 +144,7 @@ function MemberDrawer({ member, onClose }: { member: Draft; onClose: () => void 
     e.preventDefault();
     setSaving(true);
     try {
-      const body = { ...d, hourlyRate: Number(d.hourlyRate) || 0 };
+      const body = { ...d, hourlyRate: Number(d.hourlyRate) || 0, commissionRate: Number(d.commissionRate) || 0 };
       if (isNew) await post('/users', body);
       else await patch(`/users/${member.id}`, body);
       await app.reload();
@@ -187,6 +190,20 @@ function MemberDrawer({ member, onClose }: { member: Draft; onClose: () => void 
                 value={d.hourlyRate}
                 onChange={(e) => set('hourlyRate', e.target.value as unknown as number)}
               />
+            </label>
+            <label>
+              <span className="label">Commission (% of job total)</span>
+              <input
+                id="member-commission"
+                className="input"
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                value={d.commissionRate}
+                onChange={(e) => set('commissionRate', e.target.value as unknown as number)}
+              />
+              <span className="mt-1 block text-xs text-slate-500">Pre-fills commissions logged on this person's jobs. Only they and admins see it.</span>
             </label>
           </div>
 

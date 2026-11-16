@@ -17,6 +17,7 @@ import { Automations } from './pages/Automations';
 import { SettingsPage } from './pages/Settings';
 import { Team } from './pages/Team';
 import { Profitability } from './pages/Profitability';
+import { Earnings } from './pages/Earnings';
 import { RequirePerm } from './components/ui';
 import { DailyLogDetail, DailyLogs } from './pages/DailyLogs';
 import { Timesheets } from './pages/Timesheets';
@@ -27,6 +28,7 @@ import { TechShell } from './tech/TechShell';
 import { TechHome } from './tech/TechHome';
 import { TechDay } from './tech/TechDay';
 import { TechJob } from './tech/TechJob';
+import { TechPay } from './tech/TechPay';
 import { PortalApp } from './portal/PortalApp';
 
 // The demo runs inside a sandboxed frame where the URL can't carry routes.
@@ -71,6 +73,7 @@ function OfficeRoutes() {
         <Route path="invoices" element={<RequirePerm perm="view_financials"><Invoices /></RequirePerm>} />
         <Route path="invoices/:id" element={<RequirePerm perm="view_financials"><InvoiceDetailPage /></RequirePerm>} />
         <Route path="profitability" element={<RequirePerm perm="view_financials"><Profitability /></RequirePerm>} />
+        <Route path="earnings" element={<Earnings />} />
         <Route path="team" element={<RequirePerm perm="manage_team"><Team /></RequirePerm>} />
         <Route path="settings" element={<RequirePerm perm="manage_settings"><SettingsPage /></RequirePerm>} />
         <Route path="*" element={<div className="text-slate-500">Page not found.</div>} />
@@ -78,6 +81,7 @@ function OfficeRoutes() {
       <Route path="tech" element={<TechShell />}>
         <Route index element={<TechHome />} />
         <Route path="day" element={<TechDay />} />
+        <Route path="pay" element={<TechPay />} />
         <Route path="jobs/:id" element={<TechJob />} />
       </Route>
     </Routes>

@@ -36,6 +36,7 @@ export const mapUser = (r: Row): User => ({
   color: r.color,
   divisionIds: JSON.parse(r.division_ids),
   hourlyRate: r.hourly_rate ?? 0,
+  commissionRate: r.commission_rate ?? 0,
   permissions: JSON.parse(r.permissions ?? '[]'),
   active: r.active == null ? true : !!r.active,
 });

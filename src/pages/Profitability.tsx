@@ -61,7 +61,8 @@ export function Profitability() {
   const clientName = (id: number) => clients?.find((c) => c.id === id)?.name ?? '';
 
   const rows = useMemo(() => {
-    const list = [...(data ?? [])];
+    // Commissions are shown with other costs (the server already subtracts them from profit).
+    const list = (data ?? []).map((r) => ({ ...r, otherCosts: r.otherCosts + r.commissions, commissions: 0 }));
     return list.sort((a, b) => {
       const av = a[sort.key] ?? -Infinity;
       const bv = b[sort.key] ?? -Infinity;
@@ -104,7 +105,7 @@ export function Profitability() {
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Tile label="Revenue" value={money(t.revenue)} sub={`${rows.length} jobs`} />
         <Tile label="Labor" value={money(t.laborCost)} sub={hm(t.laborMinutes)} />
-        <Tile label="Materials & other" value={money(t.otherCosts)} />
+        <Tile label="Materials & other" value={money(t.otherCosts)} sub="incl. commissions" />
         <Tile label="Gross profit" value={money(t.profit)} className={t.profit < 0 ? 'text-rose-600' : undefined} />
         <Tile label="Margin" value={t.margin == null ? '—' : `${t.margin}%`} className={marginColor(t.margin)} sub={losing ? `${losing} job${losing > 1 ? 's' : ''} lost money` : undefined} />
       </div>

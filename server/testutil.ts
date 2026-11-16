@@ -15,10 +15,15 @@ export async function setup(opts: { payments?: Payments } = {}) {
   const server = createApp(db, { uploadDir, payments: opts.payments ?? { enabled: false, publishableKey: null, call: async () => { throw new Error('Stripe not configured in tests'); } } }).listen(0);
   server.unref(); // a failed assertion that skips close() must not hang the test run
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  const call = async (method: string, path: string, body?: unknown, token?: string) => {
+  /** `as` sends the acting staff member (x-user-id), standing in for a staff login. */
+  const call = async (method: string, path: string, body?: unknown, token?: string, as?: number) => {
     const res = await fetch(origin + '/api' + path, {
       method,
-      headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(as ? { 'x-user-id': String(as) } : {}),
+      },
       body: body ? JSON.stringify(body) : undefined,
     });
     return { status: res.status, data: await res.json() };

@@ -62,17 +62,16 @@ const DIVISIONS: { name: string; slug: string; prefix: string; color: string; ic
   },
 ];
 
-// [name, email, role, color, division slugs]
-// [name, email, role, color, division slugs, loaded hourly cost]
-const USERS: [string, string, Role, string, string[], number][] = [
-  ['Alex Morgan', 'alex@example.com', 'owner', '#401694', ['restoration', 'junk-removal', 'janitorial', 'hvac'], 45],
-  ['Jordan Lee', 'jordan@example.com', 'office', '#a25ddc', ['restoration', 'junk-removal', 'janitorial', 'hvac'], 26],
-  ['Marcus Reed', 'marcus@example.com', 'manager', '#e2445c', ['restoration'], 38],
-  ['Dana Cruz', 'dana@example.com', 'technician', '#ff7575', ['restoration'], 29],
-  ['Tony Ruiz', 'tony@example.com', 'technician', '#fdab3d', ['junk-removal'], 25],
-  ['Sam Patel', 'sam@example.com', 'manager', '#00c875', ['janitorial'], 31],
-  ['Kim Nguyen', 'kim@example.com', 'technician', '#579bfc', ['hvac'], 36],
-  ['Chris Walker', 'chris@example.com', 'technician', '#0086c0', ['hvac'], 34],
+// [name, email, role, color, division slugs, loaded hourly cost, commission %]
+const USERS: [string, string, Role, string, string[], number, number][] = [
+  ['Alex Morgan', 'alex@example.com', 'owner', '#401694', ['restoration', 'junk-removal', 'janitorial', 'hvac'], 45, 0],
+  ['Jordan Lee', 'jordan@example.com', 'office', '#a25ddc', ['restoration', 'junk-removal', 'janitorial', 'hvac'], 26, 0],
+  ['Marcus Reed', 'marcus@example.com', 'manager', '#e2445c', ['restoration'], 38, 3],
+  ['Dana Cruz', 'dana@example.com', 'technician', '#ff7575', ['restoration'], 29, 5],
+  ['Tony Ruiz', 'tony@example.com', 'technician', '#fdab3d', ['junk-removal'], 25, 8],
+  ['Sam Patel', 'sam@example.com', 'manager', '#00c875', ['janitorial'], 31, 2],
+  ['Kim Nguyen', 'kim@example.com', 'technician', '#579bfc', ['hvac'], 36, 6],
+  ['Chris Walker', 'chris@example.com', 'technician', '#0086c0', ['hvac'], 34, 6],
 ];
 
 const CLIENTS: [string, string | null, string, string, string][] = [
@@ -334,10 +333,20 @@ export function seed(db: DB) {
     }
 
     const userIds: Record<string, number> = {};
-    USERS.forEach(([name, email, role, color, divs, rate], i) => {
+    USERS.forEach(([name, email, role, color, divs, rate, commission], i) => {
       const r = db
-        .prepare('INSERT INTO users (name, email, phone, role, color, division_ids, hourly_rate, permissions) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(name, email, `(555) 310-${String(1001 + i * 7).slice(-4)}`, role, color, JSON.stringify(divs.map((s) => divisionIds[s])), rate, JSON.stringify(ROLE_DEFAULTS[role]));
+        .prepare('INSERT INTO users (name, email, phone, role, color, division_ids, hourly_rate, commission_rate, permissions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(
+          name,
+          email,
+          `(555) 310-${String(1001 + i * 7).slice(-4)}`,
+          role,
+          color,
+          JSON.stringify(divs.map((s) => divisionIds[s])),
+          rate,
+          commission,
+          JSON.stringify(ROLE_DEFAULTS[role]),
+        );
       userIds[name] = Number(r.lastInsertRowid);
     });
 
@@ -626,6 +635,55 @@ function seedFieldData(db: DB, ids: { userIds: Record<string, number>; jobIds: R
       userIds['Jordan Lee'],
     );
   }
+
+  // Commissions & tips: this month's from finished jobs (still owed), earlier months already paid out.
+  const owner = userIds['Alex Morgan'];
+  const earn = db.prepare('INSERT INTO earnings (user_id, job_id, kind, amount, note, earned_on, created_by, created_at, paid_out_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const jobTotal = (title: string) =>
+    (db.prepare('SELECT COALESCE(SUM(quantity * unit_price), 0) AS n FROM line_items WHERE job_id = ?').get(jobIds[title]) as { n: number }).n;
+  const rateOf = (name: string) => USERS.find((u) => u[0] === name)![6];
+  const thisMonth = date(0).slice(0, 7);
+  // Offsets that would land in last month (early in the month) are pulled back to the 1st so "this month" stays this month.
+  const inMonth = (offset: number) => (date(offset).slice(0, 7) === thisMonth ? date(offset) : `${thisMonth}-01`);
+  const commissions: [string, string, number][] = [
+    ['Storm damage — roof leak into bedroom', 'Dana Cruz', -6],
+    ['Water-damaged carpet & drywall haul-off', 'Tony Ruiz', -3],
+    ['Couch & mattress pickup', 'Tony Ruiz', -9],
+    ['Dental office deep clean', 'Sam Patel', -2],
+    ['AC not cooling', 'Chris Walker', -1],
+    ['Mini-split tune-up', 'Kim Nguyen', -12],
+  ];
+  for (const [job, who, offset] of commissions) {
+    const amount = Math.round(jobTotal(job) * rateOf(who)) / 100;
+    if (amount > 0) earn.run(userIds[who], jobIds[job], 'commission', amount, `${rateOf(who)}% of job total`, inMonth(offset), owner, `${inMonth(offset)}T17:00:00`, null);
+  }
+  const tips: [string, string, number, number, string][] = [
+    ['Couch & mattress pickup', 'Tony Ruiz', 20, -9, 'Cash from customer'],
+    ['Water-damaged carpet & drywall haul-off', 'Tony Ruiz', 40, -3, 'Cash — helped move furniture back'],
+    ['AC not cooling', 'Chris Walker', 25, -1, 'Cash'],
+    ['Storm damage — roof leak into bedroom', 'Dana Cruz', 50, -6, 'Check from homeowner'],
+    ['Mini-split tune-up', 'Kim Nguyen', 15, -12, 'Cash'],
+  ];
+  for (const [job, who, amount, offset, note] of tips) earn.run(userIds[who], jobIds[job], 'tip', amount, note, inMonth(offset), userIds[who], `${inMonth(offset)}T16:00:00`, null);
+  // Five earlier months per tech (no linked jobs in the demo), marked paid out.
+  const past: [string, number[], number[]][] = [
+    ['Dana Cruz', [310, 265, 402, 288, 355], [60, 35, 80, 45, 70]],
+    ['Tony Ruiz', [385, 440, 362, 498, 415], [95, 120, 70, 140, 110]],
+    ['Kim Nguyen', [520, 610, 455, 580, 640], [30, 20, 45, 25, 40]],
+    ['Chris Walker', [470, 395, 530, 505, 450], [55, 40, 25, 60, 35]],
+    ['Marcus Reed', [240, 310, 275, 330, 290], [0, 20, 0, 0, 25]],
+    ['Sam Patel', [120, 135, 110, 150, 140], [10, 0, 15, 0, 20]],
+  ];
+  const [y, m] = thisMonth.split('-').map(Number);
+  for (const [who, comm, tip] of past) {
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(y, m - 2 - i, 15);
+      const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-15`;
+      const paid = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-28T12:00:00`;
+      earn.run(userIds[who], null, 'commission', comm[i], 'Monthly commissions', day, owner, `${day}T17:00:00`, paid);
+      if (tip[i]) earn.run(userIds[who], null, 'tip', tip[i], 'Tips for the month', day, userIds[who], `${day}T17:00:00`, paid);
+    }
+  }
 }
 
 export function seedIfEmpty(db: DB) {
@@ -637,6 +695,7 @@ export function seedIfEmpty(db: DB) {
 }
 
 const TABLES = [
+  'earnings',
   'job_costs',
   'settings',
   'payments',

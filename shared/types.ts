@@ -33,6 +33,8 @@ export interface User {
   divisionIds: number[];
   /** Loaded cost per hour (wage + payroll taxes, workers' comp, etc.). Drives job labor cost. */
   hourlyRate: number;
+  /** Default commission, as a % of the job total. Like hourlyRate, only sent to the member and to people who manage pay or the team. */
+  commissionRate: number;
   permissions: Permission[];
   /** Inactive members keep their history but drop out of pickers and schedules. */
   active: boolean;
@@ -47,6 +49,7 @@ export const PERMISSIONS = [
   'approve_time',
   'manage_team',
   'manage_settings',
+  'manage_pay',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -57,6 +60,7 @@ export const PERMISSION_META: Record<Permission, { label: string; description: s
   approve_time: { label: 'Approve time & logs', description: "Sign off daily reports and edit others' time" },
   manage_team: { label: 'Manage team', description: 'Add members, set hourly rates and permissions' },
   manage_settings: { label: 'Company settings', description: 'Divisions, checklists, automations and company info' },
+  manage_pay: { label: 'Commissions & tips', description: "Log commissions, see everyone's earnings tracker and mark payouts" },
 };
 
 export const ROLE_DEFAULTS: Record<Role, Permission[]> = {
@@ -494,6 +498,8 @@ export interface JobCosting {
   labor: { userId: number; minutes: number; cost: number; rate: number }[];
   costs: JobCost[];
   otherCosts: number;
+  /** Commissions logged on this job (tips aren't a company cost). */
+  commissions: number;
   totalCost: number;
   profit: number;
   /** Profit as a % of revenue; null when there is no revenue yet. */
@@ -513,8 +519,54 @@ export interface ProfitRow {
   laborMinutes: number;
   laborCost: number;
   otherCosts: number;
+  commissions: number;
   profit: number;
   margin: number | null;
 }
 
 export type DashboardListKind = 'open_jobs' | 'today' | 'revenue' | 'open_tasks';
+
+// ---------- Commissions & tips ----------
+
+export type EarningKind = 'commission' | 'tip';
+
+export interface Earning {
+  id: number;
+  userId: number;
+  jobId: number | null;
+  jobNumber: string | null;
+  jobTitle: string | null;
+  kind: EarningKind;
+  amount: number;
+  note: string;
+  /** YYYY-MM-DD; the month it counts toward. */
+  earnedOn: string;
+  createdBy: number | null;
+  createdAt: string;
+  /** When it was paid out on a paycheck; null while still owed. */
+  paidOutAt: string | null;
+}
+
+export interface EarningTotals {
+  commission: number;
+  tip: number;
+  total: number;
+}
+
+/** One person's tracker for a month. */
+export interface EarningsSummary {
+  userId: number;
+  month: string; // YYYY-MM
+  totals: EarningTotals;
+  lastMonth: EarningTotals;
+  /** Everything logged and not yet paid out, any month. */
+  unpaid: number;
+  /** The six months ending with `month`, oldest first. */
+  history: ({ month: string } & EarningTotals)[];
+  entries: Earning[];
+}
+
+export interface TeamEarningsRow extends EarningTotals {
+  userId: number;
+  unpaid: number;
+}

@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import {
   CalendarDays,
+  HandCoins,
   CircleUserRound,
   Clock,
   NotebookPen,
@@ -33,6 +34,7 @@ const NAV: { to: string; label: string; icon: typeof Wrench; end?: boolean; perm
   { to: '/timesheets', label: 'Timesheets', icon: Clock },
   { to: '/invoices', label: 'Invoices', icon: Receipt, perm: 'view_financials' },
   { to: '/profitability', label: 'Profitability', icon: TrendingUp, perm: 'view_financials' },
+  { to: '/earnings', label: 'Commissions & Tips', icon: HandCoins },
   { to: '/clients', label: 'Clients', icon: Users },
   { to: '/team', label: 'Team', icon: UserCog, perm: 'manage_team' },
   { to: '/automations', label: 'Automations', icon: Zap, perm: 'manage_settings' },

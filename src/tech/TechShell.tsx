@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import clsx from 'clsx';
-import { ClipboardCheck, LayoutDashboard, Wrench } from 'lucide-react';
+import { ClipboardCheck, HandCoins, LayoutDashboard, Wrench } from 'lucide-react';
 import { logoMark, useApp } from '../store';
 import { Avatar } from '../components/ui';
 
@@ -39,12 +39,13 @@ export function TechShell() {
       </main>
 
       <nav
-        className="fixed inset-x-0 bottom-0 mx-auto grid max-w-md grid-cols-3 border-t border-slate-200 bg-white"
+        className="fixed inset-x-0 bottom-0 mx-auto grid max-w-md grid-cols-4 border-t border-slate-200 bg-white"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {[
           { to: '/tech', label: 'Today', icon: Wrench, end: true },
           { to: '/tech/day', label: 'My Day', icon: ClipboardCheck },
+          { to: '/tech/pay', label: 'My Pay', icon: HandCoins },
           { to: '/', label: 'Office', icon: LayoutDashboard },
         ].map(({ to, label, icon: Icon, end }) => (
           <NavLink

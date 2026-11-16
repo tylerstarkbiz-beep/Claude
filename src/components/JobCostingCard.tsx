@@ -41,7 +41,7 @@ export function JobCostingCard({ jobId, refreshKey }: { jobId: number; refreshKe
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Figure label="Revenue" value={money(c.revenue)} />
         <Figure label="Labor" value={money(c.laborCost)} sub={hm(c.laborMinutes)} />
-        <Figure label="Materials & other" value={money(c.otherCosts)} />
+        <Figure label="Materials & other" value={money(c.otherCosts + c.commissions)} sub={c.commissions ? `incl. ${money(c.commissions)} commission` : undefined} />
         <Figure label="Profit" value={money(c.profit)} className={c.profit < 0 ? 'text-rose-600' : undefined} />
         <Figure label="Margin" value={c.margin == null ? '—' : `${c.margin}%`} className={marginColor(c.margin)} />
       </div>
@@ -50,7 +50,7 @@ export function JobCostingCard({ jobId, refreshKey }: { jobId: number; refreshKe
         <div className="mt-4">
           <div className="flex h-3 overflow-hidden rounded-full bg-slate-100" title="Share of revenue">
             <div className="bg-sky-500" style={{ width: `${pct(c.laborCost)}%` }} title={`Labor ${money(c.laborCost)}`} />
-            <div className="bg-amber-400" style={{ width: `${pct(c.otherCosts)}%` }} title={`Other costs ${money(c.otherCosts)}`} />
+            <div className="bg-amber-400" style={{ width: `${pct(c.otherCosts + c.commissions)}%` }} title={`Other costs ${money(c.otherCosts + c.commissions)}`} />
             {c.profit > 0 && <div className="bg-emerald-500" style={{ width: `${pct(c.profit)}%` }} title={`Profit ${money(c.profit)}`} />}
           </div>
           <div className="mt-1.5 flex gap-4 text-xs text-slate-500">

@@ -11,6 +11,7 @@ import { NotesFeed } from '../components/NotesFeed';
 import { JobCostingCard } from '../components/JobCostingCard';
 import { TextClientButton } from '../components/TextClient';
 import { EstimateCard } from '../components/EstimateCard';
+import { JobEarningsCard } from '../components/Earnings';
 import { invoiceBadge } from './Invoices';
 import { JOB_STATUSES, JOB_STATUS_META, type Invoice, type InvoiceDetail, type Job, type JobDetail, type LineItem, type Task, type TimeEntry } from '../../shared/types';
 
@@ -24,6 +25,8 @@ export function JobDetailPage() {
   const navigate = useNavigate();
   const { data: job, setData, reload } = useApi<Detail>(`/jobs/${id}`);
   const [openTask, setOpenTask] = useState<number | null>(null);
+  // Bumped when commissions change, so job costing picks them up.
+  const [earningsRev, setEarningsRev] = useState(0);
 
   if (!job) return <div className="text-slate-400">Loading job…</div>;
   const division = app.division(job.divisionId);
@@ -192,7 +195,7 @@ export function JobDetailPage() {
           )}
 
           {money$ && <LineItems job={job} onChange={reload} />}
-          {money$ && <JobCostingCard jobId={job.id} refreshKey={job.total} />}
+          {money$ && <JobCostingCard jobId={job.id} refreshKey={`${job.total}-${earningsRev}`} />}
 
           <section className="card p-5">
             <h2 className="mb-4 font-semibold">Notes & photos</h2>
@@ -208,6 +211,7 @@ export function JobDetailPage() {
             </p>
           )}
           {money$ && <JobInvoices job={job} />}
+          <JobEarningsCard job={job} onChange={() => setEarningsRev((n) => n + 1)} />
           {!money$ && <JobTime jobId={job.id} />}
           <JobTasks job={job} onOpen={setOpenTask} onChange={reload} />
 

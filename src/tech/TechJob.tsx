@@ -6,6 +6,7 @@ import { useApp } from '../store';
 import { money, time } from '../format';
 import { Pill } from '../components/ui';
 import { NotesFeed } from '../components/NotesFeed';
+import { JobEarningsCard } from '../components/Earnings';
 import { useClock } from './ClockCard';
 import { JOB_STATUS_META, type Job, type JobDetail, type Task } from '../../shared/types';
 
@@ -128,6 +129,8 @@ export function TechJob() {
           ))}
         </section>
       )}
+
+      <JobEarningsCard job={job} large />
 
       <section className="card p-4">
         <h2 className="mb-3 font-semibold">Notes & photos</h2>

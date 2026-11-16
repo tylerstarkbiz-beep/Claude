@@ -2,10 +2,18 @@ import { useCallback, useEffect, useState } from 'react';
 
 export class ApiError extends Error {}
 
+// Who is using the app, sent with every request so the server can check what they may see
+// (until staff sign-in replaces it with a session).
+let actingUserId: number | null = null;
+export const setActingUser = (id: number | null) => void (actingUserId = id);
+
 export async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (init?.body !== undefined) headers['content-type'] = 'application/json';
+  if (actingUserId != null) headers['x-user-id'] = String(actingUserId);
   const res = await fetch(`/api${path}`, {
     method: init?.method ?? 'GET',
-    headers: init?.body !== undefined ? { 'content-type': 'application/json' } : undefined,
+    headers,
     body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
