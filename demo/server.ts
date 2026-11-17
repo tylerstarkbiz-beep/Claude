@@ -9,6 +9,7 @@ import { createTeamApi } from '../server/team.ts';
 import { createCostingApi } from '../server/costing.ts';
 import { createEarningsApi } from '../server/earnings.ts';
 import { createAuthApi } from '../server/auth.ts';
+import { createPipelineApi } from '../server/pipeline.ts';
 import { createPortalApi } from '../server/portal.ts';
 import { createTextingApi, runScheduledTexts } from '../server/texting.ts';
 import { stripeFromEnv } from '../server/stripe.ts';
@@ -20,7 +21,7 @@ export function startDemoServer() {
   seed(db);
   runScheduledTexts(db); // fill the outbox with today's automatic texts
   const pay = stripeFromEnv(); // no keys in the demo, so card payments show as not set up
-  const routers = [createAuthApi(db), createPortalApi(db, pay), createTextingApi(db), createNotesApi(db, '/uploads'), createTimeApi(db), createInvoicesApi(db, pay), createTeamApi(db), createCostingApi(db), createEarningsApi(db), createApi(db)] as unknown as DemoRouter[];
+  const routers = [createAuthApi(db), createPortalApi(db, pay, '/uploads'), createTextingApi(db), createNotesApi(db, '/uploads'), createTimeApi(db), createInvoicesApi(db, pay), createTeamApi(db), createCostingApi(db), createEarningsApi(db), createPipelineApi(db), createApi(db)] as unknown as DemoRouter[];
   const routes: Route[] = routers.flatMap((r) => r.routes);
 
   function dispatch(method: string, url: string, body: unknown, headers: Record<string, string>): Promise<{ status: number; data: unknown }> {

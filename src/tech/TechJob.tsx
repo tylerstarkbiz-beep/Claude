@@ -76,14 +76,14 @@ export function TechJob() {
       <section className="grid grid-cols-2 gap-2">
         {timing ? (
           <button
-            onClick={() => clock.clockInGeneral('Shop work')}
+            onClick={() => clock.clockInGeneral('General')}
             disabled={clock.busy}
             className="flex flex-col items-center justify-center rounded-xl bg-amber-500 py-2.5 font-semibold text-white"
           >
             <span className="flex items-center gap-2">
               <Square size={18} /> Leave this job
             </span>
-            <span className="text-xs font-normal opacity-90">Back to shop time</span>
+            <span className="text-xs font-normal opacity-90">Back to general time</span>
           </button>
         ) : (
           <button
@@ -148,7 +148,7 @@ export function TechJob() {
 
       <section className="card p-4">
         <h2 className="mb-3 font-semibold">Notes & photos</h2>
-        <NotesFeed jobId={job.id} large />
+        <NotesFeed stage="job" id={job.id} large chain />
       </section>
 
       {job.lineItems.length > 0 && app.can('view_financials') && (

@@ -181,7 +181,7 @@ export function createApi(db: DB): Router {
         clientId: Number(b.clientId),
         title: required(b, 'title'),
         description: b.description,
-        status: assertOneOf(b.status ?? 'request', JOB_STATUSES, 'status'),
+        status: assertOneOf(b.status ?? 'scheduled', JOB_STATUSES, 'status'),
         address: b.address,
         scheduledStart: b.scheduledStart,
         scheduledEnd: b.scheduledEnd,

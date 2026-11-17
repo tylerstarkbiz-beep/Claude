@@ -3,19 +3,31 @@ import { MessageSquareText } from 'lucide-react';
 import { api, post } from '../api';
 import { useApp } from '../store';
 import { Button, Modal } from './ui';
-import type { Job } from '../../shared/types';
+import type { Stage } from '../../shared/types';
 
-type Kind = 'booking' | 'request_received' | 'quote_ready' | 'custom';
+type Kind = 'booking' | 'request_received' | 'quote_ready' | 'quote_followup' | 'custom';
 
-const OPTIONS: { kind: Kind; label: string; when: (j: Job) => boolean }[] = [
-  { kind: 'booking', label: 'Booking confirmation', when: (j) => !!j.scheduledStart },
-  { kind: 'request_received', label: 'Request received', when: (j) => j.status === 'request' },
-  { kind: 'quote_ready', label: 'Estimate ready (with approval link)', when: (j) => j.status === 'quoted' },
+/** What a text is about: a job, a quote, or a request (its assessment visit). */
+export interface TextTarget {
+  stage: Stage;
+  id: number;
+  /** Has a booked time (job visit or request assessment). */
+  scheduled?: boolean;
+}
+
+const PATH: Record<Stage, string> = { request: 'requests', quote: 'quotes', job: 'jobs' };
+
+const OPTIONS: { kind: Kind; label: string; when: (t: TextTarget) => boolean }[] = [
+  { kind: 'booking', label: 'Booking confirmation', when: (t) => t.stage === 'job' && !!t.scheduled },
+  { kind: 'booking', label: 'Assessment visit confirmation', when: (t) => t.stage === 'request' && !!t.scheduled },
+  { kind: 'request_received', label: 'Request received', when: (t) => t.stage === 'request' },
+  { kind: 'quote_ready', label: 'Quote ready (with approval link)', when: (t) => t.stage === 'quote' },
+  { kind: 'quote_followup', label: 'Quote follow-up', when: (t) => t.stage === 'quote' },
   { kind: 'custom', label: 'Custom message', when: () => true },
 ];
 
 /** "Text client" button and composer: pick a standard message, adjust the wording, send. */
-export function TextClientButton({ job, onSent, className }: { job: Job; onSent?: () => void; className?: string }) {
+export function TextClientButton({ job, onSent, className }: { job: TextTarget; onSent?: () => void; className?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -27,7 +39,7 @@ export function TextClientButton({ job, onSent, className }: { job: Job; onSent?
   );
 }
 
-function TextComposer({ job, onClose, onSent }: { job: Job; onClose: () => void; onSent?: () => void }) {
+function TextComposer({ job, onClose, onSent }: { job: TextTarget; onClose: () => void; onSent?: () => void }) {
   const app = useApp();
   const options = OPTIONS.filter((o) => o.when(job));
   const [kind, setKind] = useState<Kind>(options[0].kind);
@@ -37,7 +49,7 @@ function TextComposer({ job, onClose, onSent }: { job: Job; onClose: () => void;
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api<{ body: string; to: string | null; blocked: string | null }>(`/jobs/${job.id}/text/${kind}`).then((r) => {
+    api<{ body: string; to: string | null; blocked: string | null }>(`/${PATH[job.stage]}/${job.id}/text/${kind}`).then((r) => {
       setBody(r.body);
       setTo(r.to);
       setBlocked(r.blocked);
@@ -47,7 +59,7 @@ function TextComposer({ job, onClose, onSent }: { job: Job; onClose: () => void;
   async function send() {
     setBusy(true);
     try {
-      await post(`/jobs/${job.id}/text`, { kind, body });
+      await post(`/${PATH[job.stage]}/${job.id}/text`, { kind, body });
       app.toast(`Text to ${to} queued`);
       onSent?.();
       onClose();

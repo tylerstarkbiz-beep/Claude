@@ -5,7 +5,7 @@ import { useApp } from '../store';
 import { addDays, time, todayISO } from '../format';
 import { Pill } from '../components/ui';
 import { ClockCard, useClock } from './ClockCard';
-import { JOB_STATUS_META, type Job } from '../../shared/types';
+import { JOB_STATUS_META, type Job, type ServiceRequest } from '../../shared/types';
 
 /** Tech home: the clock and today's visits. */
 export function TechHome() {
@@ -15,6 +15,11 @@ export function TechHome() {
   const { data: jobs } = useApi<Job[]>(app.currentUserId ? `/jobs?assigneeId=${app.currentUserId}&from=${today}&to=${addDays(today, 1)}` : null);
   const { data: upcoming } = useApi<Job[]>(app.currentUserId ? `/jobs?assigneeId=${app.currentUserId}&from=${addDays(today, 1)}&to=${addDays(today, 8)}` : null);
   const sorted = [...(jobs ?? [])].sort((a, b) => (a.scheduledStart ?? '').localeCompare(b.scheduledStart ?? ''));
+  // Assessment visits (inspect & quote) booked for this tech, today and later.
+  const { data: requests } = useApi<ServiceRequest[]>('/requests?open=1');
+  const assessments = (requests ?? [])
+    .filter((r) => r.assessmentAssigneeId === app.currentUserId && r.assessmentStart && r.assessmentStart.slice(0, 10) >= today)
+    .sort((a, b) => a.assessmentStart!.localeCompare(b.assessmentStart!));
 
   return (
     <div className="space-y-5">
@@ -29,6 +34,29 @@ export function TechHome() {
           {jobs && !sorted.length && <div className="card p-6 text-center text-sm text-slate-500">No visits scheduled today.</div>}
         </div>
       </section>
+
+      {assessments.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-semibold text-slate-500">Assessment visits ({assessments.length})</h2>
+          <div className="space-y-2">
+            {assessments.map((r) => (
+              <Link key={r.id} to={`/requests/${r.id}`} className="card flex items-center gap-3 border-l-4 p-3" style={{ borderLeftColor: app.division(r.divisionId)?.color }}>
+                <div className="w-16 text-xs text-slate-500">
+                  {r.assessmentStart!.slice(0, 10) === today ? 'Today' : new Date(r.assessmentStart!).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}
+                  <div className="font-semibold text-slate-700">{time(r.assessmentStart)}</div>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{r.title}</div>
+                  <div className="truncate text-xs text-slate-500">
+                    {r.number} · {r.address}
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-300" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {!!upcoming?.length && (
         <section>

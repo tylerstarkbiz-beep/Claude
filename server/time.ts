@@ -206,7 +206,7 @@ export function createTimeApi(db: DB): Router {
       const job = jobId ? getJob(db, jobId) : null;
       if (jobId && !job) throw new HttpError(400, 'Job not found');
       if (job && ['cancelled'].includes(job.status)) throw new HttpError(400, 'That job was cancelled');
-      const category = jobId ? null : GENERAL_TIME_CATEGORIES.find((c) => c === req.body.category) ?? 'Shop work';
+      const category = jobId ? null : GENERAL_TIME_CATEGORIES.find((c) => c === req.body.category) ?? 'General';
       return tx(db, () => {
         const now = localDateTime();
         const open = openEntry(db, user.id);
@@ -219,7 +219,7 @@ export function createTimeApi(db: DB): Router {
         if (job) {
           logActivity(db, 'time', `${user.name} started work on ${job.number}`, { jobId: job.id });
           // Starting the clock on a scheduled job means the crew is on it.
-          if (['request', 'quoted', 'scheduled'].includes(job.status)) automations = setJobStatus(db, job.id, 'in_progress');
+          if (job.status === 'scheduled') automations = setJobStatus(db, job.id, 'in_progress');
         }
         const entry = mapEntry(db.prepare(`${TIME_SELECT} WHERE te.id = ?`).get(r.lastInsertRowid)!);
         return { entry, automations };
@@ -267,7 +267,7 @@ export function createTimeApi(db: DB): Router {
       const user = getUser(db, Number(b.userId));
       const r = db
         .prepare('INSERT INTO time_entries (user_id, job_id, started_at, ended_at, notes, hourly_rate, category) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run(user.id, optNum(b.jobId), startedAt, b.endedAt || null, b.notes || null, user.hourlyRate, optNum(b.jobId) ? null : (GENERAL_TIME_CATEGORIES.find((c) => c === b.category) ?? 'Shop work'));
+        .run(user.id, optNum(b.jobId), startedAt, b.endedAt || null, b.notes || null, user.hourlyRate, optNum(b.jobId) ? null : (GENERAL_TIME_CATEGORIES.find((c) => c === b.category) ?? 'General'));
       return mapEntry(db.prepare(`${TIME_SELECT} WHERE te.id = ?`).get(r.lastInsertRowid)!);
     }),
   );

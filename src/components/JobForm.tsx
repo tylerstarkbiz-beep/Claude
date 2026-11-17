@@ -14,7 +14,7 @@ export function JobForm({ onClose, clientId, divisionId }: { onClose: () => void
     clientId: clientId ?? ('' as number | ''),
     title: '',
     description: '',
-    status: 'request' as JobStatus,
+    status: 'scheduled' as JobStatus,
     scheduledStart: '',
     scheduledEnd: '',
     assigneeId: '' as number | '',
@@ -41,7 +41,7 @@ export function JobForm({ onClose, clientId, divisionId }: { onClose: () => void
         ...form,
         clientId: cid,
         assigneeId: form.assigneeId || null,
-        status: form.scheduledStart && form.status === 'request' ? 'scheduled' : form.status,
+        status: form.status,
       });
       app.toast(`Created ${job.number}`);
       app.announce(job);

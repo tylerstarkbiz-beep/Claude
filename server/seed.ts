@@ -127,18 +127,9 @@ const JOBS: SeedJob[] = [
     items: [['Soot cleaning (sq ft)', 600, 2.25], ['Thermal fogging', 1, 450], ['Contents pack-out', 1, 1200]],
   },
   {
-    division: 'restoration', client: 9, title: 'Unit 4B mold remediation', status: 'quoted', assignee: 'Marcus Reed',
-    fields: { lossType: 'Mold', affectedAreas: 'Bathroom wall cavity, closet' },
-    items: [['Containment setup', 1, 650], ['Mold removal (sq ft)', 120, 18], ['Clearance testing', 1, 375]],
-  },
-  {
     division: 'restoration', client: 6, title: 'Storm damage — roof leak into bedroom', status: 'completed', start: [-6, 10, 5], assignee: 'Dana Cruz',
     fields: { lossType: 'Storm', insuranceCarrier: 'Liberty Mutual', claimNumber: 'LM-77120', dateOfLoss: date(-8) },
     items: [['Emergency tarp', 1, 550], ['Drywall removal (sq ft)', 180, 3.5], ['Drying equipment (3 days)', 1, 1100]],
-  },
-  {
-    division: 'restoration', client: 2, title: 'Sewage backup — basement', status: 'request', assignee: 'Marcus Reed',
-    fields: { lossType: 'Sewage' }, items: [],
   },
   {
     division: 'junk-removal', client: 2, title: 'Garage cleanout', status: 'scheduled', start: [0, 13, 3], assignee: 'Tony Ruiz',
@@ -149,11 +140,6 @@ const JOBS: SeedJob[] = [
     division: 'junk-removal', client: 8, title: 'Hot tub removal', status: 'scheduled', start: [2, 9, 4], assignee: 'Tony Ruiz',
     fields: { loadSize: 'Full', location: 'Backyard', itemTypes: '6-person hot tub, cut & haul' },
     items: [['Hot tub demo & haul', 1, 650]],
-  },
-  {
-    division: 'junk-removal', client: 6, title: 'Estate cleanout — whole house', status: 'quoted', assignee: 'Tony Ruiz',
-    fields: { loadSize: 'Full', location: 'Inside', itemTypes: 'Furniture, appliances, general household' },
-    items: [['Full truck load', 3, 695], ['Appliance disposal', 4, 45]],
   },
   {
     division: 'junk-removal', client: 0, title: 'Water-damaged carpet & drywall haul-off', status: 'invoiced', start: [-3, 14, 2], assignee: 'Tony Ruiz',
@@ -181,10 +167,6 @@ const JOBS: SeedJob[] = [
     items: [['Deep clean', 1, 890], ['Floor strip & wax', 1, 450]],
   },
   {
-    division: 'janitorial', client: 5, title: 'Post-renovation cleaning', status: 'request',
-    fields: { frequency: 'One-time', squareFootage: '6000' }, items: [],
-  },
-  {
     division: 'hvac', client: 5, title: 'No heat — sanctuary RTU', status: 'in_progress', start: [0, 8, 4], assignee: 'Kim Nguyen',
     fields: { serviceType: 'Repair', systemType: 'RTU', equipmentBrand: 'Carrier', modelSerial: '48TCED08 / 2214G30012', maintenancePlan: 'None' },
     items: [['Diagnostic', 1, 149], ['Igniter replacement', 1, 285], ['Labor (hr)', 2, 125]],
@@ -193,11 +175,6 @@ const JOBS: SeedJob[] = [
     division: 'hvac', client: 3, title: 'Quarterly PM — 6 rooftop units', status: 'scheduled', start: [3, 7, 8], assignee: 'Chris Walker',
     fields: { serviceType: 'Maintenance', systemType: 'RTU', maintenancePlan: 'Gold' },
     items: [['RTU preventive maintenance', 6, 165], ['Filters (set)', 6, 42]],
-  },
-  {
-    division: 'hvac', client: 6, title: 'Heat pump replacement', status: 'quoted', assignee: 'Kim Nguyen',
-    fields: { serviceType: 'Install', systemType: 'Heat Pump', equipmentBrand: 'Trane', maintenancePlan: 'None' },
-    items: [['3-ton heat pump system', 1, 8900], ['Install labor', 1, 2400], ['Permit', 1, 175]],
   },
   {
     division: 'hvac', client: 8, title: 'AC not cooling', status: 'completed', start: [-1, 13, 2], assignee: 'Chris Walker',
@@ -264,15 +241,15 @@ const TASKS: SeedTask[] = [
   { board: 'Restoration Pipeline', group: 'Insurance & Billing', title: 'Collect signed work authorization', status: 'done', priority: 'high', assignee: 'Marcus Reed', due: -3, job: 'Water mitigation — burst supply line' },
   { board: 'Restoration Pipeline', group: 'Insurance & Billing', title: 'Final invoice & photo report — Wells', status: 'working', priority: 'high', assignee: 'Jordan Lee', due: 1, job: 'Storm damage — roof leak into bedroom' },
   { board: 'Restoration Pipeline', group: 'Rebuild', title: 'Get drywall & paint bid for Wells bedroom', priority: 'medium', assignee: 'Marcus Reed', due: 5, job: 'Storm damage — roof leak into bedroom' },
-  { board: 'Restoration Pipeline', group: 'Mitigation', title: 'Schedule mold clearance test — Riverbend 4B', priority: 'medium', assignee: 'Marcus Reed', due: 6, job: 'Unit 4B mold remediation' },
+  { board: 'Restoration Pipeline', group: 'Mitigation', title: 'Schedule mold clearance test — Riverbend 4B', priority: 'medium', assignee: 'Marcus Reed', due: 6 },
 
   { board: 'Junk Removal Ops', group: 'This Week', title: 'Confirm dump hours for Saturday', priority: 'low', assignee: 'Tony Ruiz', due: 2 },
   { board: 'Junk Removal Ops', group: 'This Week', title: 'Rent trailer for hot tub job', status: 'working', priority: 'high', assignee: 'Tony Ruiz', due: 1, job: 'Hot tub removal' },
   { board: 'Junk Removal Ops', group: 'Follow-ups', title: 'Collect payment — Harper haul-off', status: 'stuck', priority: 'high', assignee: 'Jordan Lee', due: -1, job: 'Water-damaged carpet & drywall haul-off' },
-  { board: 'Junk Removal Ops', group: 'Follow-ups', title: 'Follow up on estate cleanout quote', priority: 'medium', assignee: 'Jordan Lee', due: 0, job: 'Estate cleanout — whole house' },
+  { board: 'Junk Removal Ops', group: 'Follow-ups', title: 'Follow up on estate cleanout quote', priority: 'medium', assignee: 'Jordan Lee', due: 0 },
   { board: 'Junk Removal Ops', group: 'Done', title: 'Request Google review — Gonzalez', status: 'done', priority: 'low', assignee: 'Jordan Lee', due: -8, job: 'Couch & mattress pickup' },
 
-  { board: 'Janitorial Accounts', group: 'Onboarding', title: 'Walkthrough & scope — First Baptist', priority: 'high', assignee: 'Sam Patel', due: 2, job: 'Post-renovation cleaning',
+  { board: 'Janitorial Accounts', group: 'Onboarding', title: 'Walkthrough & scope — First Baptist', priority: 'high', assignee: 'Sam Patel', due: 2,
     subtasks: [['Measure sq ft'], ['Photo current condition'], ['Build cleaning checklist']] },
   { board: 'Janitorial Accounts', group: 'Quality Checks', title: 'Monthly QA inspection — Oakview', priority: 'medium', assignee: 'Sam Patel', due: 4, job: 'Nightly clinic cleaning' },
   { board: 'Janitorial Accounts', group: 'Quality Checks', title: 'Address complaint: trash missed in Suite 110', status: 'working', priority: 'high', assignee: 'Sam Patel', due: -1, job: 'Nightly clinic cleaning',
@@ -281,7 +258,7 @@ const TASKS: SeedTask[] = [
   { board: 'Janitorial Accounts', group: 'Onboarding', title: 'Renewal proposal — Summit Office Park', priority: 'medium', assignee: 'Alex Morgan', due: 14, job: 'Building C common areas' },
 
   { board: 'HVAC Service', group: 'Parts on Order', title: 'Order igniter for Carrier RTU', status: 'done', priority: 'critical', assignee: 'Kim Nguyen', due: -1, job: 'No heat — sanctuary RTU' },
-  { board: 'HVAC Service', group: 'Parts on Order', title: 'Confirm Trane equipment lead time', priority: 'medium', assignee: 'Kim Nguyen', due: 3, job: 'Heat pump replacement' },
+  { board: 'HVAC Service', group: 'Parts on Order', title: 'Confirm Trane equipment lead time', priority: 'medium', assignee: 'Kim Nguyen', due: 3 },
   { board: 'HVAC Service', group: 'Follow-ups', title: 'Offer maintenance plan to Kevin O’Brien', priority: 'medium', assignee: 'Jordan Lee', due: 6, job: 'AC not cooling' },
   { board: 'HVAC Service', group: 'Maintenance Plans', title: 'Schedule fall tune-ups for Silver/Gold members', status: 'working', priority: 'high', assignee: 'Chris Walker', due: 7,
     subtasks: [['Pull member list', 'done'], ['Send scheduling texts'], ['Book routes']] },
@@ -538,20 +515,20 @@ function seedFieldData(db: DB, ids: { userIds: Record<string, number>; jobIds: R
     run: (u: number, job: number | null, start: string, end: string | null, notes: string | null) =>
       timeStmt.run(u, job, start, end, notes, rates[u], job ? null : /drive/i.test(notes ?? '') ? 'Travel' : /maintenance/i.test(notes ?? '') ? 'Equipment upkeep' : 'Shop work'),
   };
-  const crew: [string, string[]][] = [
-    ['Marcus Reed', ['Water mitigation — burst supply line', 'Unit 4B mold remediation']],
+  const crew: [string, (string | null)[]][] = [
+    ['Marcus Reed', ['Water mitigation — burst supply line', null]],
     ['Dana Cruz', ['Water mitigation — burst supply line', 'Storm damage — roof leak into bedroom']],
-    ['Tony Ruiz', ['Estate cleanout — whole house', 'Garage cleanout']],
+    ['Tony Ruiz', [null, 'Garage cleanout']],
     ['Sam Patel', ['Nightly clinic cleaning', 'Dental office deep clean']],
-    ['Kim Nguyen', ['No heat — sanctuary RTU', 'Heat pump replacement']],
+    ['Kim Nguyen', ['No heat — sanctuary RTU', null]],
     ['Chris Walker', ['Quarterly PM — 6 rooftop units', 'AC not cooling']],
   ];
   for (const [name, jobs] of crew) {
     for (let offset = -4; offset <= -1; offset++) {
       const u = userIds[name];
       insertTime.run(u, null, at(offset, 7, 30), at(offset, 8, 5), 'Load truck');
-      insertTime.run(u, jobIds[jobs[0]], at(offset, 8, 20), at(offset, 12, offset % 2 ? 10 : 40), null);
-      insertTime.run(u, jobIds[jobs[1]], at(offset, 13, 0), at(offset, 15, 45 - offset * 5), null);
+      insertTime.run(u, jobs[0] ? jobIds[jobs[0]] : null, at(offset, 8, 20), at(offset, 12, offset % 2 ? 10 : 40), null);
+      insertTime.run(u, jobs[1] ? jobIds[jobs[1]] : null, at(offset, 13, 0), at(offset, 15, 45 - offset * 5), null);
       insertTime.run(u, null, at(offset, 15, 55), at(offset, 16, 30), 'Drive back, unload');
     }
   }
@@ -647,6 +624,8 @@ function seedFieldData(db: DB, ids: { userIds: Record<string, number>; jobIds: R
     );
   }
 
+  seedPipeline(db, { userIds, jobIds, divisionIds });
+
   // Commissions & tips: this month's from finished jobs (still owed), earlier months already paid out.
   const owner = userIds['Alex Morgan'];
   const earn = db.prepare('INSERT INTO earnings (user_id, job_id, kind, amount, note, earned_on, created_by, created_at, paid_out_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
@@ -706,6 +685,9 @@ export function seedIfEmpty(db: DB) {
 }
 
 const TABLES = [
+  'quote_items',
+  'quotes',
+  'requests',
   'staff_sessions',
   'earnings',
   'job_costs',
@@ -726,4 +708,185 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
   tx(db, () => TABLES.forEach((t) => db.exec(`DELETE FROM ${t}`)));
   seed(db);
   console.log('Database reset with demo data.');
+}
+
+/** Requests and quotes: open ones at every stage, plus full request → quote → job → invoice chains for finished work. */
+function seedPipeline(db: DB, ids: { userIds: Record<string, number>; jobIds: Record<string, number>; divisionIds: Record<string, number> }) {
+  const { userIds, jobIds, divisionIds } = ids;
+  const client = (name: string) => db.prepare('SELECT id, address FROM clients WHERE name = ?').get(name) as { id: number; address: string };
+  let reqN = 1000;
+  let quoteN = 1000;
+  const request = (
+    who: string,
+    division: string,
+    title: string,
+    details: string,
+    o: { offset: number; source?: 'office' | 'portal'; status?: string; preferred?: string; assessment?: [number, number, string]; createdBy?: string },
+  ) => {
+    const c = client(who);
+    const [aDay, aHour, aWho] = o.assessment ?? [null, null, null];
+    const r = db
+      .prepare(
+        `INSERT INTO requests (number, client_id, division_id, title, details, address, preferred_times, source, status, assessment_start, assessment_end, assessment_assignee_id, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        `REQ-${++reqN}`,
+        c.id,
+        divisionIds[division],
+        title,
+        details,
+        c.address,
+        o.preferred ?? null,
+        o.source ?? 'office',
+        o.status ?? (o.assessment ? 'assessment_scheduled' : 'new'),
+        aDay != null ? at(aDay, aHour!) : null,
+        aDay != null ? at(aDay, aHour! + 1) : null,
+        aWho ? userIds[aWho] : null,
+        o.createdBy ? userIds[o.createdBy] : null,
+        at(o.offset, 9, 12),
+      );
+    const id = Number(r.lastInsertRowid);
+    db.prepare('INSERT INTO activity (kind, message, request_id, created_at) VALUES (?, ?, ?, ?)').run('request', `New request REQ-${reqN}: ${title}`, id, at(o.offset, 9, 12));
+    return id;
+  };
+  const quote = (
+    who: string,
+    division: string,
+    title: string,
+    description: string,
+    items: [string, number, number][],
+    o: { offset: number; requestId?: number; status: string; sentOffset?: number; approvedOffset?: number; approvedBy?: string; followups?: number; createdBy?: string },
+  ) => {
+    const c = client(who);
+    const r = db
+      .prepare(
+        `INSERT INTO quotes (number, client_id, division_id, request_id, title, description, address, status, sent_at, approved_at, approved_by, signer_name, followup_count, last_followup_on, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        `Q-${++quoteN}`,
+        c.id,
+        divisionIds[division],
+        o.requestId ?? null,
+        title,
+        description,
+        c.address,
+        o.status,
+        o.sentOffset != null ? at(o.sentOffset, 15) : null,
+        o.approvedOffset != null ? at(o.approvedOffset, 18, 40) : null,
+        o.approvedBy ?? null,
+        o.approvedBy === 'client' ? who : null,
+        o.followups ?? 0,
+        o.followups ? date(-1) : null,
+        o.createdBy ? userIds[o.createdBy] : null,
+        at(o.offset, 14),
+      );
+    const id = Number(r.lastInsertRowid);
+    for (const [d, q, u] of items) db.prepare('INSERT INTO quote_items (quote_id, description, quantity, unit_price) VALUES (?, ?, ?, ?)').run(id, d, q, u);
+    db.prepare('INSERT INTO activity (kind, message, quote_id, created_at) VALUES (?, ?, ?, ?)').run('quote', `New quote Q-${quoteN}: ${title}`, id, at(o.offset, 14));
+    return id;
+  };
+  const note = (stage: 'request_id' | 'quote_id' | 'job_id', id: number, author: string | null, offset: number, hour: number, body: string, clientVisible = false) =>
+    db
+      .prepare(`INSERT INTO job_notes (${stage}, author_id, body, client_visible, created_at) VALUES (?, ?, ?, ?, ?)`)
+      .run(id, author ? userIds[author] : null, body, clientVisible ? 1 : 0, at(offset, hour, 30));
+  const link = (jobTitle: string, requestId: number | null, quoteId: number) => {
+    db.prepare('UPDATE jobs SET request_id = ?, quote_id = ? WHERE id = ?').run(requestId, quoteId, jobIds[jobTitle]);
+    db.prepare('UPDATE invoices SET quote_id = ? WHERE job_id = ?').run(quoteId, jobIds[jobTitle]);
+  };
+
+  // New, from the customer portal, not yet looked at.
+  const sewage = request('Robert Chen', 'restoration', 'Sewage backup — basement', 'Floor drain backed up overnight. About an inch of water across half the basement, smells bad. Washer and some boxes got wet.', {
+    offset: 0,
+    source: 'portal',
+    preferred: 'Today or tomorrow, any time — it’s urgent',
+  });
+  note('request_id', sewage, null, 0, 7, 'Water is mostly by the laundry area and the storage shelves.');
+
+  // Assessment booked.
+  const reno = request('First Baptist Church', 'janitorial', 'Post-renovation cleaning', 'Fellowship hall and two classrooms just finished renovation (new drywall and floors). Need construction dust cleanup before Sunday.', {
+    offset: -2,
+    preferred: 'Weekday mornings',
+    assessment: [1, 10, 'Sam Patel'],
+    createdBy: 'Jordan Lee',
+  });
+  note('request_id', reno, 'Jordan Lee', -2, 9, 'Called in by the church office (Pam). Roughly 6,000 sq ft. Wants a quote before Friday.');
+
+  // Converted to a quote, sent and waiting for approval (daily follow-ups running).
+  const mold = request('Riverbend Apartments', 'restoration', 'Unit 4B mold remediation', 'Tenant reports black spots on the bathroom wall and musty smell in the closet.', {
+    offset: -6,
+    status: 'converted',
+    assessment: [-5, 13, 'Marcus Reed'],
+    createdBy: 'Jordan Lee',
+  });
+  note('request_id', mold, 'Marcus Reed', -5, 14, 'Walked 4B. Visible growth on the bathroom wall cavity side (~12 sq ft) and closet baseboard. Moisture meter 28% at the wall base — slow leak at the tub valve. Plumber needed first.');
+  const moldQ = quote(
+    'Riverbend Apartments',
+    'restoration',
+    'Unit 4B mold remediation',
+    'Set up containment, remove affected drywall and insulation in the bathroom wall cavity and closet, HEPA vacuum and treat framing, then third-party clearance test.',
+    [['Containment setup', 1, 650], ['Mold removal (sq ft)', 120, 18], ['Clearance testing', 1, 375]],
+    { offset: -4, requestId: mold, status: 'sent', sentOffset: -4, followups: 2, createdBy: 'Marcus Reed' },
+  );
+  note('quote_id', moldQ, 'Marcus Reed', -4, 14, 'Plumber must fix the tub valve before we start or it will come back. Mentioned to property manager.');
+
+  // Quoted over the phone (no request), changes requested by the client.
+  const estate = quote(
+    'David & Karen Wells',
+    'junk-removal',
+    'Estate cleanout — whole house',
+    'Full cleanout of the house: furniture, appliances and general household. Broom-swept when done.',
+    [['Full truck load', 3, 695], ['Appliance disposal', 4, 45]],
+    { offset: -3, status: 'changes_requested', sentOffset: -3, createdBy: 'Tony Ruiz' },
+  );
+  note('quote_id', estate, null, -1, 19, 'Change request: Can you leave the dining set and piano? Family is picking those up.');
+
+  // Approved (verbally), ready to convert to a job.
+  const heat = request('David & Karen Wells', 'hvac', 'Heat pump replacement', 'Old heat pump is 19 years old and short-cycling. Want a quote to replace it.', {
+    offset: -8,
+    status: 'converted',
+    assessment: [-7, 15, 'Kim Nguyen'],
+  });
+  note('request_id', heat, 'Kim Nguyen', -7, 16, 'Existing 3-ton Rheem, R-22, compressor weak. Line set reusable. Pad is level.', true);
+  quote(
+    'David & Karen Wells',
+    'hvac',
+    'Heat pump replacement',
+    'Replace the existing 3-ton heat pump and air handler with a Trane XR16 system. Includes permit, startup and 10-year parts warranty registration.',
+    [['3-ton heat pump system', 1, 8900], ['Install labor', 1, 2400], ['Permit', 1, 175]],
+    { offset: -6, requestId: heat, status: 'approved', sentOffset: -6, approvedOffset: -1, approvedBy: 'Jordan Lee', createdBy: 'Kim Nguyen' },
+  );
+
+  // Full chains for finished work: request → quote → job → invoice, with notes along the way.
+  const storm = request('David & Karen Wells', 'restoration', 'Storm damage — roof leak into bedroom', 'Water coming through the bedroom ceiling after last night’s storm.', {
+    offset: -7,
+    source: 'portal',
+    status: 'converted',
+    assessment: [-7, 8, 'Dana Cruz'],
+  });
+  note('request_id', storm, null, -7, 7, 'It’s dripping in two spots and the ceiling is sagging near the window.');
+  note('request_id', storm, 'Dana Cruz', -7, 9, 'On site: roof decking damage over the NW bedroom. Ceiling drywall saturated. Recommend emergency tarp today plus drying.', true);
+  const stormQ = quote(
+    'David & Karen Wells',
+    'restoration',
+    'Storm damage — roof leak into bedroom',
+    'Emergency tarp, remove wet ceiling drywall and insulation, 3 days of drying.',
+    [['Emergency tarp', 1, 550], ['Drywall removal (sq ft)', 180, 3.5], ['Drying equipment (3 days)', 1, 1100]],
+    { offset: -7, requestId: storm, status: 'converted', sentOffset: -7, approvedOffset: -7, approvedBy: 'client', createdBy: 'Dana Cruz' },
+  );
+  note('quote_id', stormQ, 'Dana Cruz', -7, 10, 'Approved on site so we could tarp before the next rain.');
+  link('Storm damage — roof leak into bedroom', storm, stormQ);
+
+  const couch = request('Maria Gonzalez', 'junk-removal', 'Couch & mattress pickup', 'Old sectional couch and a queen mattress, curbside.', { offset: -11, source: 'portal', status: 'converted' });
+  const couchQ = quote('Maria Gonzalez', 'junk-removal', 'Couch & mattress pickup', 'Curbside pickup of a sectional couch and a queen mattress, including mattress recycling.', [['Minimum load', 1, 149]], {
+    offset: -10,
+    requestId: couch,
+    status: 'converted',
+    sentOffset: -10,
+    approvedOffset: -10,
+    approvedBy: 'client',
+    createdBy: 'Tony Ruiz',
+  });
+  link('Couch & mattress pickup', couch, couchQ);
 }

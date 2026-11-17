@@ -18,6 +18,8 @@ import { SettingsPage } from './pages/Settings';
 import { Team } from './pages/Team';
 import { Profitability } from './pages/Profitability';
 import { Earnings } from './pages/Earnings';
+import { RequestDetailPage, Requests } from './pages/Requests';
+import { QuoteDetailPage, Quotes } from './pages/Quotes';
 import { RequirePerm } from './components/ui';
 import { DailyLogDetail, DailyLogs } from './pages/DailyLogs';
 import { Timesheets } from './pages/Timesheets';
@@ -60,6 +62,10 @@ function OfficeRoutes() {
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="my-work" element={<MyWork />} />
+        <Route path="requests" element={<Requests />} />
+        <Route path="requests/:id" element={<RequestDetailPage />} />
+        <Route path="quotes" element={<RequirePerm perm="view_financials"><Quotes /></RequirePerm>} />
+        <Route path="quotes/:id" element={<RequirePerm perm="view_financials"><QuoteDetailPage /></RequirePerm>} />
         <Route path="jobs" element={<Jobs />} />
         <Route path="jobs/:id" element={<JobDetailPage />} />
         <Route path="schedule" element={<Schedule />} />

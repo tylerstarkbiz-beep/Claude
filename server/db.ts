@@ -5,6 +5,59 @@ import { dirname } from 'node:path';
 export type DB = DatabaseSync;
 
 const SCHEMA = `
+-- Requests (a client or the office asks for a visit to inspect and quote) and quotes (estimates).
+-- They stay on the client's account after conversion; jobs and invoices link back to them.
+CREATE TABLE IF NOT EXISTS requests (
+  id INTEGER PRIMARY KEY,
+  number TEXT NOT NULL UNIQUE,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  division_id INTEGER NOT NULL REFERENCES divisions(id),
+  title TEXT NOT NULL,
+  details TEXT NOT NULL DEFAULT '',
+  address TEXT,
+  preferred_times TEXT,
+  source TEXT NOT NULL DEFAULT 'office',
+  status TEXT NOT NULL DEFAULT 'new',
+  assessment_start TEXT,
+  assessment_end TEXT,
+  assessment_assignee_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS requests_client ON requests(client_id);
+
+CREATE TABLE IF NOT EXISTS quotes (
+  id INTEGER PRIMARY KEY,
+  number TEXT NOT NULL UNIQUE,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  division_id INTEGER NOT NULL REFERENCES divisions(id),
+  request_id INTEGER REFERENCES requests(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  address TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  deposit_percent REAL,
+  sent_at TEXT,
+  approved_at TEXT,
+  approved_by TEXT,
+  signer_name TEXT,
+  signature TEXT,
+  signed_ip TEXT,
+  followup_count INTEGER NOT NULL DEFAULT 0,
+  last_followup_on TEXT,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS quotes_client ON quotes(client_id);
+CREATE INDEX IF NOT EXISTS quotes_request ON quotes(request_id);
+
+CREATE TABLE IF NOT EXISTS quote_items (
+  id INTEGER PRIMARY KEY,
+  quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  quantity REAL NOT NULL DEFAULT 1,
+  unit_price REAL NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS staff_sessions (
   token_hash TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -156,7 +209,7 @@ CREATE INDEX IF NOT EXISTS time_job ON time_entries(job_id);
 
 CREATE TABLE IF NOT EXISTS job_notes (
   id INTEGER PRIMARY KEY,
-  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  job_id INTEGER REFERENCES jobs(id) ON DELETE CASCADE,
   author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   body TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
@@ -165,7 +218,7 @@ CREATE INDEX IF NOT EXISTS job_notes_job ON job_notes(job_id);
 
 CREATE TABLE IF NOT EXISTS photos (
   id INTEGER PRIMARY KEY,
-  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  job_id INTEGER REFERENCES jobs(id) ON DELETE CASCADE,
   note_id INTEGER REFERENCES job_notes(id) ON DELETE CASCADE,
   author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   filename TEXT NOT NULL,
@@ -340,7 +393,102 @@ const ADDED_COLUMNS: [table: string, column: string, definition: string][] = [
   ['users', 'password_hash', 'TEXT'],
   // General (non-job) time: Shop work, Travel, ...
   ['time_entries', 'category', 'TEXT'],
+  // The chain: request → quote → job → invoice. Each step links back to the one before.
+  ['jobs', 'request_id', 'INTEGER REFERENCES requests(id) ON DELETE SET NULL'],
+  ['jobs', 'quote_id', 'INTEGER REFERENCES quotes(id) ON DELETE SET NULL'],
+  ['invoices', 'quote_id', 'INTEGER REFERENCES quotes(id) ON DELETE SET NULL'],
+  // Notes & photos can belong to a request, a quote or a job; some are shared with the client.
+  ['job_notes', 'request_id', 'INTEGER REFERENCES requests(id) ON DELETE CASCADE'],
+  ['job_notes', 'quote_id', 'INTEGER REFERENCES quotes(id) ON DELETE CASCADE'],
+  ['job_notes', 'client_visible', 'INTEGER NOT NULL DEFAULT 0'],
+  ['activity', 'request_id', 'INTEGER REFERENCES requests(id) ON DELETE CASCADE'],
+  ['activity', 'quote_id', 'INTEGER REFERENCES quotes(id) ON DELETE CASCADE'],
 ];
+
+/** Rebuild a table so `column` allows NULL (SQLite can't ALTER a NOT NULL away). Keeps data, indexes and references. */
+function dropNotNull(db: DB, table: string, column: string) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string; notnull: number }[];
+  if (!cols.find((c) => c.name === column)?.notnull) return;
+  const { sql } = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) as { sql: string };
+  const indexes = (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL").all(table) as { sql: string }[]).map((r) => r.sql);
+  const relaxed = sql.replace(new RegExp(`(\\b${column}\\s+INTEGER)\\s+NOT NULL`), '$1').replace(/CREATE TABLE (IF NOT EXISTS )?"?\w+"?/, `CREATE TABLE ${table}_rebuild`);
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(relaxed);
+    db.exec(`INSERT INTO ${table}_rebuild SELECT * FROM ${table}`);
+    db.exec(`DROP TABLE ${table}`);
+    db.exec(`ALTER TABLE ${table}_rebuild RENAME TO ${table}`);
+    for (const ix of indexes) db.exec(ix);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
+/**
+ * Jobs used to start life as status 'request' or 'quoted'. Those become real requests and quotes (with their
+ * notes, photos, signature and deposit), and the placeholder job is removed. Runs once; a no-op afterwards.
+ */
+function moveLegacyStages(db: DB) {
+  const legacy = db.prepare("SELECT * FROM jobs WHERE status IN ('request', 'quoted') ORDER BY id").all() as Record<string, any>[];
+  if (!legacy.length) return;
+  const next = (table: string, prefix: string) =>
+    `${prefix}-${(db.prepare(`SELECT COALESCE(MAX(CAST(substr(number, ${prefix.length + 2}) AS INTEGER)), 1000) + 1 AS n FROM ${table}`).get() as { n: number }).n}`;
+  tx(db, () => {
+    for (const j of legacy) {
+      const created = j.created_at;
+      if (j.status === 'request') {
+        const r = db
+          .prepare('INSERT INTO requests (number, client_id, division_id, title, details, address, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(next('requests', 'REQ'), j.client_id, j.division_id, j.title, j.description ?? '', j.address, j.source ?? 'office', created);
+        const requestId = Number(r.lastInsertRowid);
+        db.prepare('UPDATE job_notes SET request_id = ?, job_id = NULL WHERE job_id = ?').run(requestId, j.id);
+        db.prepare('UPDATE activity SET request_id = ?, job_id = NULL WHERE job_id = ?').run(requestId, j.id);
+      } else {
+        const sig = db.prepare('SELECT * FROM estimate_signatures WHERE job_id = ? ORDER BY id DESC').get(j.id) as Record<string, any> | undefined;
+        const r = db
+          .prepare(
+            `INSERT INTO quotes (number, client_id, division_id, title, description, address, status, deposit_percent, sent_at, approved_at, approved_by, signer_name, signature,
+               signed_ip, followup_count, last_followup_on, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            next('quotes', 'Q'),
+            j.client_id,
+            j.division_id,
+            j.title,
+            j.description ?? '',
+            j.address,
+            j.approved_at ? 'approved' : 'sent',
+            j.deposit_percent,
+            j.quoted_at ?? created,
+            j.approved_at,
+            j.approved_at ? 'client' : null,
+            sig?.signer_name ?? null,
+            sig?.signature ?? null,
+            sig?.ip ?? null,
+            j.followup_count ?? 0,
+            j.last_followup_on,
+            created,
+          );
+        const quoteId = Number(r.lastInsertRowid);
+        db.prepare('INSERT INTO quote_items (quote_id, description, quantity, unit_price) SELECT ?, description, quantity, unit_price FROM line_items WHERE job_id = ?').run(
+          quoteId,
+          j.id,
+        );
+        db.prepare('UPDATE job_notes SET quote_id = ?, job_id = NULL WHERE job_id = ?').run(quoteId, j.id);
+        db.prepare('UPDATE activity SET quote_id = ?, job_id = NULL WHERE job_id = ?').run(quoteId, j.id);
+        db.prepare('UPDATE invoices SET quote_id = ? WHERE job_id = ?').run(quoteId, j.id);
+      }
+      db.prepare('UPDATE photos SET job_id = NULL WHERE job_id = ?').run(j.id);
+      db.prepare('DELETE FROM jobs WHERE id = ?').run(j.id);
+    }
+  });
+}
 
 function migrate(db: DB) {
   for (const [table, column, definition] of ADDED_COLUMNS) {
@@ -348,6 +496,9 @@ function migrate(db: DB) {
     if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS payments_external_id ON payments(external_id)');
+  dropNotNull(db, 'job_notes', 'job_id');
+  dropNotNull(db, 'photos', 'job_id');
+  moveLegacyStages(db);
 }
 
 export function openDb(path: string): DB {
@@ -366,9 +517,12 @@ export function openDb(path: string): DB {
   return db;
 }
 
-/** Run fn inside a transaction, rolling back on error. */
+/** Run fn inside a transaction, rolling back on error. Nested calls join the outer transaction. */
+const inTx = new WeakSet<DB>();
 export function tx<T>(db: DB, fn: () => T): T {
+  if (inTx.has(db)) return fn();
   db.exec('BEGIN');
+  inTx.add(db);
   try {
     const result = fn();
     db.exec('COMMIT');
@@ -376,6 +530,8 @@ export function tx<T>(db: DB, fn: () => T): T {
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
+  } finally {
+    inTx.delete(db);
   }
 }
 
@@ -383,12 +539,14 @@ export function logActivity(
   db: DB,
   kind: string,
   message: string,
-  refs: { jobId?: number | null; taskId?: number | null } = {},
+  refs: { jobId?: number | null; taskId?: number | null; requestId?: number | null; quoteId?: number | null } = {},
 ) {
-  db.prepare('INSERT INTO activity (kind, message, job_id, task_id) VALUES (?, ?, ?, ?)').run(
+  db.prepare('INSERT INTO activity (kind, message, job_id, task_id, request_id, quote_id) VALUES (?, ?, ?, ?, ?, ?)').run(
     kind,
     message,
     refs.jobId ?? null,
     refs.taskId ?? null,
+    refs.requestId ?? null,
+    refs.quoteId ?? null,
   );
 }

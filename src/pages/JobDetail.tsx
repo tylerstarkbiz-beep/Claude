@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import clsx from 'clsx';
-import { ArrowLeft, CheckCircle2, Mail, MapPin, Phone, Plus, Receipt, Trash2 } from 'lucide-react';
+import { ArrowLeft, Mail, MapPin, Phone, Plus, Receipt, Trash2 } from 'lucide-react';
 import { del, patch, post, useApi } from '../api';
 import { useApp } from '../store';
 import { hm, money, relative, shortDate, todayISO } from '../format';
@@ -10,7 +10,7 @@ import { TaskDrawer, statusOptions } from '../components/TaskDrawer';
 import { NotesFeed } from '../components/NotesFeed';
 import { JobCostingCard } from '../components/JobCostingCard';
 import { TextClientButton } from '../components/TextClient';
-import { EstimateCard } from '../components/EstimateCard';
+import { ChainBar } from '../components/Chain';
 import { JobEarningsCard } from '../components/Earnings';
 import { invoiceBadge } from './Invoices';
 import { JOB_STATUSES, JOB_STATUS_META, type Invoice, type InvoiceDetail, type Job, type JobDetail, type LineItem, type Task, type TimeEntry } from '../../shared/types';
@@ -84,14 +84,9 @@ export function JobDetailPage() {
         </div>
       </div>
 
-      {job.approvedAt && job.status === 'quoted' && (
-        <div className="mb-6 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <CheckCircle2 size={18} />
-          <span>
-            <b>{job.client.name}</b> approved this estimate in the customer portal on {shortDate(job.approvedAt.slice(0, 10))}. Schedule it to move it forward.
-          </span>
-        </div>
-      )}
+      <div className="mb-6">
+        <ChainBar kind="job" id={job.id} />
+      </div>
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">
           <section className="card p-5">
@@ -109,7 +104,7 @@ export function JobDetailPage() {
                       <Phone size={15} /> Call
                     </a>
                   )}
-                  <TextClientButton job={job} onSent={reload} />
+                  <TextClientButton job={{ stage: 'job', id: job.id, scheduled: !!job.scheduledStart }} onSent={reload} />
                 </div>
                 <div className="mt-2 space-y-1 text-sm text-slate-600">
                   {job.client.phone && (
@@ -198,13 +193,13 @@ export function JobDetailPage() {
           {money$ && <JobCostingCard jobId={job.id} refreshKey={`${job.total}-${earningsRev}`} />}
 
           <section className="card p-5">
-            <h2 className="mb-4 font-semibold">Notes & photos</h2>
-            <NotesFeed jobId={job.id} />
+            <h2 className="font-semibold">Notes & photos</h2>
+            <p className="mb-4 text-xs text-slate-500">Includes notes and photos from this job's request and quote.</p>
+            <NotesFeed stage="job" id={job.id} chain />
           </section>
         </div>
 
         <div className="space-y-6">
-          <EstimateCard job={job} onChange={reload} />
           {job.reminderSentAt && job.scheduledStart && (
             <p className="-mt-3 px-1 text-xs text-slate-500">
               📱 24-hour reminder text: {job.reminderSentAt.startsWith('skipped') ? 'not sent (booked less than a day ahead)' : `sent ${relative(job.reminderSentAt)}`}

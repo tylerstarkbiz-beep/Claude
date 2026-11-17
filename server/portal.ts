@@ -5,12 +5,13 @@ import { Router, type Request } from 'express';
 import { createHash, randomBytes } from 'node:crypto';
 import { logActivity, tx, type DB } from './db.ts';
 import { h, id, required } from './http.ts';
-import { HttpError, JOB_SELECT, getClient, getJob, localDateTime, mapClient, mapJob, mapLineItem, mapUser } from './repo.ts';
-import { createJob } from './jobs.ts';
+import { HttpError, JOB_SELECT, getClient, getJob, mapClient, mapJob, mapLineItem, mapUser } from './repo.ts';
+import { approveQuote, chainFor, createRequest, getQuote, getQuoteDetail, mapRequest } from './pipeline.ts';
+import { addNote, chainNotes } from './notes.ts';
 import { getCompany, getDetail, chargeInvoice, createDepositInvoice, getInvoice, settleIntent } from './invoices.ts';
 import { assertOwnCard, ensureCustomer, listCards, type Payments } from './stripe.ts';
 import { mapOutbox, queueEmail } from './mailer.ts';
-import type { Client } from '../shared/types.ts';
+import type { Chain, Client, ServiceRequest } from '../shared/types.ts';
 
 const INVITE_DAYS = 7;
 const LOGIN_MINUTES = 30;
@@ -70,7 +71,6 @@ function publicJob(db: DB, jobId: number) {
   const j = getJob(db, jobId)!;
   const tech = j.assigneeId ? db.prepare('SELECT * FROM users WHERE id = ?').get(j.assigneeId) : undefined;
   const division = db.prepare('SELECT name, color FROM divisions WHERE id = ?').get(j.divisionId) as { name: string; color: string };
-  const approved = db.prepare('SELECT approved_at FROM jobs WHERE id = ?').get(j.id) as { approved_at: string | null };
   return {
     id: j.id,
     number: j.number,
@@ -83,32 +83,85 @@ function publicJob(db: DB, jobId: number) {
     total: j.total,
     division,
     tech: tech ? { firstName: mapUser(tech).name.split(' ')[0], color: mapUser(tech).color } : null,
-    approvedAt: approved.approved_at,
-    depositPercent: j.depositPercent ?? getCompany(db).depositPercent,
-    signature: (db.prepare('SELECT signer_name AS name, signed_at AS signedAt FROM estimate_signatures WHERE job_id = ? ORDER BY id DESC').get(j.id) as
-      | { name: string; signedAt: string }
-      | undefined) ?? null,
-    deposit: depositFor(db, j.id),
     lineItems: db.prepare('SELECT * FROM line_items WHERE job_id = ? ORDER BY id').all(j.id).map(mapLineItem),
     createdAt: j.createdAt,
   };
 }
 
-/** The latest non-void deposit invoice for a job, if any. */
-export function depositFor(db: DB, jobId: number) {
-  const row = db.prepare("SELECT id FROM invoices WHERE job_id = ? AND kind = 'deposit' AND status != 'void' ORDER BY id DESC").get(jobId) as { id: number } | undefined;
+/** The latest non-void deposit invoice for a quote, if any. */
+export function depositForQuote(db: DB, quoteId: number) {
+  const row = db.prepare("SELECT id FROM invoices WHERE quote_id = ? AND kind = 'deposit' AND status != 'void' ORDER BY id DESC").get(quoteId) as { id: number } | undefined;
   if (!row) return null;
   const inv = getInvoice(db, row.id);
   return { invoiceId: inv.id, number: inv.number, amount: inv.total, balance: inv.balance, status: inv.status };
 }
 
-function ownJob(db: DB, client: Client, jobId: number) {
-  const j = getJob(db, jobId);
-  if (!j || j.clientId !== client.id) throw new HttpError(404, 'Not found');
-  return j;
+/** What a client may see of a request. */
+function publicRequest(db: DB, r: ServiceRequest) {
+  const division = db.prepare('SELECT name, color FROM divisions WHERE id = ?').get(r.divisionId) as { name: string; color: string };
+  const chain = chainFor(db, 'request', r.id);
+  const visibleQuote = chain.quote && chain.quote.status !== 'draft' ? chain.quote : null;
+  return {
+    id: r.id,
+    number: r.number,
+    title: r.title,
+    details: r.details,
+    address: r.address,
+    preferredTimes: r.preferredTimes,
+    status: r.status,
+    assessmentStart: r.assessmentStart,
+    assessmentEnd: r.assessmentEnd,
+    division,
+    quote: visibleQuote ? { id: visibleQuote.id, number: visibleQuote.number, status: visibleQuote.status } : null,
+    job: chain.job ? { id: chain.job.id, number: chain.job.number } : null,
+    createdAt: r.createdAt,
+  };
 }
 
-export function createPortalApi(db: DB, pay: Payments): Router {
+/** What a client may see of a quote: scope, line items, deposit and their signature (never drafts). */
+function publicQuote(db: DB, quoteId: number) {
+  const q = getQuoteDetail(db, quoteId);
+  const division = db.prepare('SELECT name, color FROM divisions WHERE id = ?').get(q.divisionId) as { name: string; color: string };
+  const chain = chainFor(db, 'quote', q.id);
+  return {
+    id: q.id,
+    number: q.number,
+    title: q.title,
+    description: q.description,
+    address: q.address,
+    status: q.status,
+    total: q.total,
+    items: q.items,
+    division,
+    depositPercent: q.depositPercent ?? getCompany(db).depositPercent,
+    sentAt: q.sentAt,
+    approvedAt: q.approvedAt,
+    signature: q.signerName ? { name: q.signerName, signedAt: q.approvedAt } : null,
+    deposit: depositForQuote(db, q.id),
+    request: chain.request ? { id: chain.request.id, number: chain.request.number } : null,
+    job: chain.job ? { id: chain.job.id, number: chain.job.number } : null,
+    createdAt: q.createdAt,
+  };
+}
+
+function ownQuote(db: DB, client: Client, quoteId: number) {
+  const q = db.prepare('SELECT client_id, status FROM quotes WHERE id = ?').get(quoteId) as { client_id: number; status: string } | undefined;
+  if (!q || q.client_id !== client.id || q.status === 'draft') throw new HttpError(404, 'Not found');
+  return getQuote(db, quoteId);
+}
+
+/** The record's chain, checked against the signed-in client, with drafts hidden. */
+function ownChain(db: DB, client: Client, kind: 'request' | 'quote' | 'job' | 'invoice', recordId: number): Chain {
+  const table = { request: 'requests', quote: 'quotes', job: 'jobs', invoice: 'invoices' }[kind];
+  const row = db.prepare(`SELECT client_id FROM ${table} WHERE id = ?`).get(recordId) as { client_id: number } | undefined;
+  if (!row || row.client_id !== client.id) throw new HttpError(404, 'Not found');
+  const chain = chainFor(db, kind, recordId);
+  if (chain.quote?.status === 'draft') chain.quote = null;
+  chain.invoices = chain.invoices.filter((i) => i.status !== 'draft');
+  return chain;
+}
+
+export function createPortalApi(db: DB, pay: Payments, uploadDir: string): Router {
   const api = Router();
 
   // ---------- Office side ----------
@@ -158,21 +211,6 @@ export function createPortalApi(db: DB, pay: Payments): Router {
         db.prepare('DELETE FROM portal_tokens WHERE client_id = ? AND used_at IS NULL').run(id(req));
       }
       return { enabled };
-    }),
-  );
-
-  /** Office: the signed estimate and deposit for a job. */
-  api.get(
-    '/jobs/:id/estimate',
-    h((req) => {
-      const sig = db
-        .prepare('SELECT signer_name, signature, total, ip, signed_at FROM estimate_signatures WHERE job_id = ? ORDER BY id DESC')
-        .get(id(req)) as Record<string, any> | undefined;
-      return {
-        signature: sig ? { name: sig.signer_name, image: sig.signature, total: sig.total, ip: sig.ip, signedAt: sig.signed_at } : null,
-        deposit: depositFor(db, id(req)),
-        defaultDepositPercent: getCompany(db).depositPercent,
-      };
     }),
   );
 
@@ -273,6 +311,18 @@ export function createPortalApi(db: DB, pay: Payments): Router {
     }),
   );
 
+  api.get(
+    '/portal/requests',
+    h((req) => {
+      const client = sessionClient(db, req);
+      return db
+        .prepare("SELECT * FROM requests WHERE client_id = ? AND status != 'archived' ORDER BY created_at DESC, id DESC")
+        .all(client.id)
+        .map((r) => publicRequest(db, mapRequest(r)));
+    }),
+  );
+
+  /** A client asks for a visit to inspect and quote, optionally with photos of the problem. */
   api.post(
     '/portal/requests',
     h((req) => {
@@ -281,71 +331,82 @@ export function createPortalApi(db: DB, pay: Payments): Router {
       const division = db.prepare('SELECT name FROM divisions WHERE id = ?').get(divisionId) as { name: string } | undefined;
       if (!division) throw new HttpError(400, 'Pick the kind of service you need');
       const details = required(req.body, 'description').slice(0, 4000);
-      const when = String(req.body.preferredTimes ?? '').trim().slice(0, 500);
-      const job = createJob(db, {
-        clientId: client.id,
-        divisionId,
-        title: `${division.name} request${req.body.summary ? `: ${String(req.body.summary).slice(0, 80)}` : ''}`,
-        description: `${details}${when ? `\n\nPreferred times: ${when}` : ''}\n\n(Submitted in the customer portal)`,
-        address: String(req.body.address ?? '').trim() || client.address,
-        status: 'request',
-        source: 'portal',
+      const summary = String(req.body.summary ?? '').trim().slice(0, 80);
+      return tx(db, () => {
+        const r = createRequest(db, {
+          clientId: client.id,
+          divisionId,
+          title: summary || `${division.name} request`,
+          details,
+          address: String(req.body.address ?? '').trim() || client.address,
+          preferredTimes: String(req.body.preferredTimes ?? '').trim().slice(0, 500) || null,
+          source: 'portal',
+        });
+        const photos = Array.isArray(req.body.photos) ? req.body.photos : [];
+        if (photos.length) addNote(db, uploadDir, { stage: 'request', id: r.id }, { body: 'Photos from the request', photos, authorId: null });
+        return publicRequest(db, r);
       });
-      return publicJob(db, job.id);
     }),
   );
 
-  /** Approve and sign an estimate. If a deposit applies, its invoice is created for the client to pay. */
-  api.post(
-    '/portal/estimates/:id/approve',
+  api.get(
+    '/portal/quotes',
     h((req) => {
       const client = sessionClient(db, req);
-      const job = ownJob(db, client, id(req));
-      if (job.status !== 'quoted' || job.approvedAt) throw new HttpError(409, 'This estimate is no longer open for approval');
+      return (db.prepare("SELECT id FROM quotes WHERE client_id = ? AND status != 'draft' ORDER BY created_at DESC, id DESC").all(client.id) as { id: number }[]).map(
+        (q) => publicQuote(db, q.id),
+      );
+    }),
+  );
+
+  /** Approve and sign a quote. If a deposit applies, its invoice is created for the client to pay. */
+  api.post(
+    '/portal/quotes/:id/approve',
+    h((req) => {
+      const client = sessionClient(db, req);
+      const q = ownQuote(db, client, id(req));
+      if (!['sent', 'changes_requested'].includes(q.status)) throw new HttpError(409, 'This quote is no longer open for approval');
       const name = String(req.body.signatureName ?? '').trim().slice(0, 120);
       const signature = String(req.body.signature ?? '');
       if (!name) throw new HttpError(400, 'Type your full name to sign');
       if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(signature) || signature.length > 400_000) throw new HttpError(400, 'Please sign in the box');
-      const pct = job.depositPercent ?? getCompany(db).depositPercent;
       tx(db, () => {
-        const signedAt = now();
-        db.prepare(
-          `INSERT INTO estimate_signatures (job_id, client_id, signer_name, signature, total, line_items, ip, user_agent, signed_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(
-          job.id,
-          client.id,
-          name,
-          signature,
-          job.total,
-          JSON.stringify(db.prepare('SELECT description, quantity, unit_price FROM line_items WHERE job_id = ? ORDER BY id').all(job.id)),
-          req.ip ?? null,
-          String(req.get('user-agent') ?? '').slice(0, 300),
-          signedAt,
-        );
-        db.prepare('UPDATE jobs SET approved_at = ? WHERE id = ?').run(signedAt, job.id);
-        logActivity(db, 'portal', `✅ ${client.name} approved and signed estimate ${job.number} (${name})`, { jobId: job.id });
-        if (pct > 0 && job.total > 0) createDepositInvoice(db, job.id, pct);
+        const approved = approveQuote(db, q.id, { client: { name, signature, ip: req.ip ?? null } });
+        logActivity(db, 'portal', `✅ ${client.name} approved and signed quote ${q.number} (${name})`, { quoteId: q.id });
+        const pct = approved.depositPercent ?? getCompany(db).depositPercent;
+        if (pct > 0 && approved.total > 0) createDepositInvoice(db, approved, pct);
       });
-      return publicJob(db, job.id);
+      return publicQuote(db, q.id);
     }),
   );
 
   api.post(
-    '/portal/estimates/:id/changes',
+    '/portal/quotes/:id/changes',
     h((req) => {
       const client = sessionClient(db, req);
-      const job = ownJob(db, client, id(req));
+      const q = ownQuote(db, client, id(req));
+      if (!['sent', 'changes_requested'].includes(q.status)) throw new HttpError(409, 'This quote is no longer open for changes');
       const message = required(req.body, 'message').slice(0, 4000);
-      db.prepare('INSERT INTO job_notes (job_id, author_id, body, created_at) VALUES (?, NULL, ?, ?)').run(
-        job.id,
-        `💬 From ${client.name} (portal): ${message}`,
-        localDateTime(),
-      );
-      logActivity(db, 'portal', `💬 ${client.name} asked for changes to ${job.number}`, { jobId: job.id });
-      return { ok: true };
+      tx(db, () => {
+        addNote(db, uploadDir, { stage: 'quote', id: q.id }, { body: `Change request: ${message}`, authorId: null });
+        db.prepare("UPDATE quotes SET status = 'changes_requested' WHERE id = ?").run(q.id);
+        logActivity(db, 'portal', `💬 ${client.name} asked for changes to ${q.number}`, { quoteId: q.id });
+      });
+      return publicQuote(db, q.id);
     }),
   );
+
+  /** Everything the client may see about one piece of work: the chain and its shared notes & photos. */
+  for (const kind of ['request', 'quote', 'job', 'invoice'] as const) {
+    api.get(
+      `/portal/history/${kind}/:id`,
+      h((req) => {
+        const client = sessionClient(db, req);
+        const chain = ownChain(db, client, kind, id(req));
+        return { chain, notes: chainNotes(db, chain, true) };
+      }),
+    );
+  }
 
   api.get(
     '/portal/invoices',
@@ -369,6 +430,10 @@ export function createPortalApi(db: DB, pay: Payments): Router {
       return {
         company: getCompany(db),
         invoice: { ...d, job: d.job ? { number: d.job.number, title: d.job.title, address: d.job.address } : null },
+        history: (() => {
+          const chain = ownChain(db, client, 'invoice', inv.id);
+          return { chain, notes: chainNotes(db, chain, true) };
+        })(),
       };
     }),
   );

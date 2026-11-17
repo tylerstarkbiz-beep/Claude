@@ -6,7 +6,7 @@ import { useBranding, type Branding } from '../brand';
 import { DEMO } from '../env';
 import { Button } from '../components/ui';
 import { SignedOut, getSession, papi, setSession } from './session';
-import { EstimatesPage, InvoicePage, InvoicesPage, PaymentPage, PortalHome, RequestsPage, VisitsPage } from './PortalPages';
+import { InvoicePage, InvoicesPage, PaymentPage, PortalHome, QuotesPage, RequestsPage, VisitsPage } from './PortalPages';
 
 export interface PortalMe {
   client: { id: number; name: string; company: string | null; email: string | null; phone: string | null; address: string | null };
@@ -104,7 +104,7 @@ function Login({ brand }: { brand: Branding }) {
 const NAV = [
   { to: '/portal', label: 'Home', icon: Home, end: true },
   { to: '/portal/requests', label: 'Requests', icon: Inbox },
-  { to: '/portal/estimates', label: 'Estimates', icon: FileText },
+  { to: '/portal/quotes', label: 'Quotes', icon: FileText },
   { to: '/portal/visits', label: 'Visits', icon: CalendarDays },
   { to: '/portal/invoices', label: 'Invoices', icon: Receipt },
   { to: '/portal/payment', label: 'Payment', icon: CreditCard },
@@ -168,7 +168,9 @@ function SignedIn({ brand }: { brand: Branding }) {
         <Routes>
           <Route index element={<PortalHome />} />
           <Route path="requests" element={<RequestsPage />} />
-          <Route path="estimates" element={<EstimatesPage />} />
+          <Route path="quotes" element={<QuotesPage />} />
+          {/* Older texts linked to /portal/estimates. */}
+          <Route path="estimates" element={<Navigate to="/portal/quotes" replace />} />
           <Route path="visits" element={<VisitsPage />} />
           <Route path="invoices" element={<InvoicesPage />} />
           <Route path="invoices/:id" element={<InvoicePage />} />

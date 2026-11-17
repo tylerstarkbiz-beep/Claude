@@ -1,19 +1,21 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Copy, ExternalLink, Globe, Mail, Plus } from 'lucide-react';
+import { ArrowLeft, Copy, ExternalLink, Globe, Inbox, Mail, Plus } from 'lucide-react';
 import { patch, post, useApi } from '../api';
 import { DEMO } from '../env';
 import { useApp } from '../store';
-import { dateTime, money, relative } from '../format';
-import { Button, DivisionBadge, Pill } from '../components/ui';
+import { money, relative } from '../format';
+import { Button, DivisionBadge } from '../components/ui';
 import { JobForm } from '../components/JobForm';
-import { JOB_STATUS_META, type Client, type Job } from '../../shared/types';
+import { RequestForm } from './Requests';
+import { ChainSteps } from '../components/Chain';
+import type { Chain, Client, Job } from '../../shared/types';
 
 export function ClientDetailPage() {
   const { id } = useParams();
-  const app = useApp();
   const { data: client, reload } = useApi<Client & { jobs: Job[] }>(`/clients/${id}`);
   const [creating, setCreating] = useState(false);
+  const [creatingRequest, setCreatingRequest] = useState(false);
   if (!client) return <div className="text-slate-400">Loading…</div>;
 
   const lifetime = client.jobs.filter((j) => ['completed', 'invoiced', 'paid'].includes(j.status)).reduce((a, j) => a + j.total, 0);
@@ -45,9 +47,14 @@ export function ClientDetailPage() {
             {client.jobs.length} jobs · {money(lifetime)} lifetime revenue
           </div>
         </div>
-        <Button onClick={() => setCreating(true)}>
-          <Plus size={16} /> New job for client
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setCreatingRequest(true)}>
+            <Inbox size={16} /> New request
+          </Button>
+          <Button variant="secondary" onClick={() => setCreating(true)}>
+            <Plus size={16} /> New job
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
@@ -72,27 +79,10 @@ export function ClientDetailPage() {
           <PortalCard client={client} />
         </div>
 
-        <section className="card p-5">
-          <h2 className="mb-3 font-semibold">Job history (all divisions)</h2>
-          <div className="divide-y divide-slate-100">
-            {client.jobs.map((j) => (
-              <Link key={j.id} to={`/jobs/${j.id}`} className="flex items-center gap-3 py-3 hover:bg-slate-50">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{j.title}</div>
-                  <div className="text-xs text-slate-500">
-                    {j.number} · {dateTime(j.scheduledStart)}
-                  </div>
-                </div>
-                <DivisionBadge division={app.division(j.divisionId)} />
-                <Pill label={JOB_STATUS_META[j.status].label} color={JOB_STATUS_META[j.status].color} />
-                <span className="w-20 text-right text-sm font-medium">{money(j.total)}</span>
-              </Link>
-            ))}
-            {!client.jobs.length && <p className="py-4 text-sm text-slate-400">No jobs yet.</p>}
-          </div>
-        </section>
+        <WorkHistory clientId={client.id} />
       </div>
       {creating && <JobForm onClose={() => setCreating(false)} clientId={client.id} />}
+      {creatingRequest && <RequestForm onClose={() => setCreatingRequest(false)} clientId={client.id} />}
     </div>
   );
 }
@@ -220,7 +210,32 @@ function TextingToggle({ clientId }: { clientId: number }) {
         disabled={!data.mobile}
         onChange={async (e) => setData({ ...data, ...(await patch<{ optOut: boolean }>(`/clients/${clientId}/texting`, { optOut: !e.target.checked })) })}
       />
-      {data.mobile ? 'Text messages (reminders, confirmations, estimate follow-ups)' : 'Text messages: add a mobile number to turn on'}
+      {data.mobile ? 'Text messages (reminders, confirmations, quote follow-ups)' : 'Text messages: add a mobile number to turn on'}
     </label>
+  );
+}
+
+/** Every piece of work for the client as a chain: request → quote → job → invoices. Converted steps stay visible. */
+function WorkHistory({ clientId }: { clientId: number }) {
+  const app = useApp();
+  const { data } = useApi<{ title: string; divisionId: number | null; date: string; chain: Chain }[]>(`/clients/${clientId}/work`);
+  return (
+    <section className="card p-5">
+      <h2 className="font-semibold">Work history (all divisions)</h2>
+      <p className="mb-3 text-xs text-slate-500">Each row is one piece of work, from request to quote to job to invoice. Click any step to open it.</p>
+      <div className="divide-y divide-slate-100">
+        {data?.map((w, i) => (
+          <div key={i} className="py-3">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="font-medium">{w.title}</span>
+              <DivisionBadge division={app.division(w.divisionId)} />
+              <span className="text-xs text-slate-400">{relative(w.date)}</span>
+            </div>
+            <ChainSteps chain={w.chain} compact />
+          </div>
+        ))}
+        {data && !data.length && <p className="py-4 text-sm text-slate-400">Nothing yet.</p>}
+      </div>
+    </section>
   );
 }

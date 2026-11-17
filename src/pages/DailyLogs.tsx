@@ -426,7 +426,7 @@ function Timeline({ log }: { log: DailyLog }) {
                 </Link>
               ) : (
                 <span className="text-slate-600">
-                  {e.category ?? 'General time'}
+                  {e.category && e.category !== 'General' ? e.category : 'General time'}
                   {e.notes && ` · ${e.notes}`}
                 </span>
               )}
@@ -446,8 +446,11 @@ function Timeline({ log }: { log: DailyLog }) {
       kind: 'note' as const,
       node: (
         <div className="text-sm">
-          <Link to={`/jobs/${n.jobId}`} className="text-xs text-slate-500 hover:text-brand-600">
-            Note on {n.job.number}
+          <Link
+            to={n.jobId ? `/jobs/${n.jobId}` : n.quoteId ? `/quotes/${n.quoteId}` : `/requests/${n.requestId}`}
+            className="text-xs text-slate-500 hover:text-brand-600"
+          >
+            Note on {n.stageNumber}
           </Link>
           {n.body && <p className="line-clamp-3 whitespace-pre-wrap">{n.body}</p>}
           {n.photos.length > 0 && (

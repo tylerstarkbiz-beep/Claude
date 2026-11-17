@@ -1,13 +1,15 @@
 // Text messages to clients: booking confirmations and other one-off texts from the office, plus the
-// automatic 24-hour job reminders and daily follow-ups on estimates waiting for approval.
+// automatic 24-hour job reminders and daily follow-ups on quotes waiting for approval.
+// Texts can be about a request (its assessment visit), a quote or a job.
 import { Router } from 'express';
 import { logActivity, type DB } from './db.ts';
 import { h, id } from './http.ts';
 import { HttpError, getClient, getJob } from './repo.ts';
+import { getQuote, getRequest } from './pipeline.ts';
 import { getCompany } from './invoices.ts';
 import { createLoginLink } from './portal.ts';
 import { normalizePhone, queueText } from './mailer.ts';
-import type { Client, Job } from '../shared/types.ts';
+import type { Client, Stage } from '../shared/types.ts';
 
 export const TEXT_KINDS = ['booking', 'request_received', 'quote_ready', 'reminder', 'quote_followup', 'custom'] as const;
 export type TextKind = (typeof TEXT_KINDS)[number];
@@ -23,7 +25,53 @@ const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', curr
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 const day = (iso: string) => new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
-function window(job: Job) {
+/** What a text is about: a job, a quote, or a request's assessment visit. */
+export interface TextSubject {
+  stage: Stage;
+  id: number;
+  clientId: number;
+  divisionId: number;
+  title: string;
+  total: number;
+  address: string | null;
+  scheduledStart: string | null;
+  scheduledEnd: string | null;
+  assigneeId: number | null;
+}
+
+/** Which texts make sense on each kind of record. */
+export const KINDS_FOR: Record<Stage, TextKind[]> = {
+  request: ['request_received', 'booking', 'custom'],
+  quote: ['quote_ready', 'quote_followup', 'custom'],
+  job: ['booking', 'reminder', 'custom'],
+};
+
+export function textSubject(db: DB, stage: Stage, recordId: number): TextSubject {
+  if (stage === 'job') {
+    const j = getJob(db, recordId);
+    if (!j) throw new HttpError(404, 'Job not found');
+    return { stage, ...j };
+  }
+  if (stage === 'quote') {
+    const q = getQuote(db, recordId);
+    return { stage, id: q.id, clientId: q.clientId, divisionId: q.divisionId, title: q.title, total: q.total, address: q.address, scheduledStart: null, scheduledEnd: null, assigneeId: null };
+  }
+  const r = getRequest(db, recordId);
+  return {
+    stage,
+    id: r.id,
+    clientId: r.clientId,
+    divisionId: r.divisionId,
+    title: `an assessment visit (${r.title})`,
+    total: 0,
+    address: r.address,
+    scheduledStart: r.assessmentStart,
+    scheduledEnd: r.assessmentEnd,
+    assigneeId: r.assessmentAssigneeId,
+  };
+}
+
+function window(job: TextSubject) {
   if (!job.scheduledStart) return 'soon';
   return `${day(job.scheduledStart)}, ${clock(job.scheduledStart)}${job.scheduledEnd ? `–${clock(job.scheduledEnd)}` : ''}`;
 }
@@ -37,13 +85,13 @@ export function cannotText(db: DB, client: Client): string | null {
 }
 
 /** The standard wording for each kind of text. `{link}` becomes a portal sign-in link when sent. */
-export function composeText(db: DB, kind: TextKind, job: Job, client: Client): { body: string; link: string | null } {
+export function composeText(db: DB, kind: TextKind, job: TextSubject, client: Client): { body: string; link: string | null } {
   const c = getCompany(db);
   const first = client.name.split(/\s|&/)[0];
   const tech = job.assigneeId ? (db.prepare('SELECT name FROM users WHERE id = ?').get(job.assigneeId) as { name: string } | undefined)?.name.split(' ')[0] : null;
   const call = c.phone ? ` Questions? Call ${c.phone}.` : '';
   const stop = ' Reply STOP to opt out.';
-  const estimateLink = () => createLoginLink(db, client.id, 7 * 86_400_000, '/portal/estimates');
+  const estimateLink = () => createLoginLink(db, client.id, 7 * 86_400_000, '/portal/quotes');
   switch (kind) {
     case 'booking':
       return {
@@ -55,9 +103,9 @@ export function composeText(db: DB, kind: TextKind, job: Job, client: Client): {
       return { body: `Hi ${first}, thanks for contacting ${c.name}! We got your ${division.toLowerCase()} request and will reach out shortly to schedule.${call}${stop}`, link: null };
     }
     case 'quote_ready':
-      return { body: `Hi ${first}, your estimate from ${c.name} for ${job.title} (${money(job.total)}) is ready. Review, approve and sign it here: {link}${call}${stop}`, link: estimateLink() };
+      return { body: `Hi ${first}, your quote from ${c.name} for ${job.title} (${money(job.total)}) is ready. Review, approve and sign it here: {link}${call}${stop}`, link: estimateLink() };
     case 'quote_followup':
-      return { body: `Hi ${first}, just checking in on your estimate for ${job.title} (${money(job.total)}). You can approve and sign it here: {link}${call}${stop}`, link: estimateLink() };
+      return { body: `Hi ${first}, just checking in on your quote for ${job.title} (${money(job.total)}). You can approve and sign it here: {link}${call}${stop}`, link: estimateLink() };
     case 'reminder':
       return {
         body: `Reminder from ${c.name}: we're scheduled for ${job.title} on ${window(job)}${job.address ? ` at ${job.address}` : ''}. Need to reschedule? ${c.phone ? `Call ${c.phone}.` : 'Reply to this text.'}${stop}`,
@@ -68,9 +116,13 @@ export function composeText(db: DB, kind: TextKind, job: Job, client: Client): {
   }
 }
 
-function sendJobText(db: DB, job: Job, client: Client, kind: TextKind, body: string, link: string | null) {
-  queueText(db, { to: client.phone!, body, link, clientId: client.id, jobId: job.id, kind });
-  logActivity(db, 'text', `📱 Texted ${client.name}: ${kind.replace(/_/g, ' ')}`, { jobId: job.id });
+function sendJobText(db: DB, subject: TextSubject, client: Client, kind: TextKind, body: string, link: string | null) {
+  queueText(db, { to: client.phone!, body, link, clientId: client.id, jobId: subject.stage === 'job' ? subject.id : null, kind });
+  logActivity(db, 'text', `📱 Texted ${client.name}: ${kind.replace(/_/g, ' ')}`, {
+    jobId: subject.stage === 'job' ? subject.id : null,
+    quoteId: subject.stage === 'quote' ? subject.id : null,
+    requestId: subject.stage === 'request' ? subject.id : null,
+  });
 }
 
 /**
@@ -88,7 +140,8 @@ export function runScheduledTexts(db: DB, now = new Date()): string[] {
       .prepare("SELECT id FROM jobs WHERE status = 'scheduled' AND scheduled_start IS NOT NULL AND reminder_sent_at IS NULL")
       .all() as { id: number }[];
     for (const { id: jobId } of jobs) {
-      const job = getJob(db, jobId)!;
+      const job = textSubject(db, 'job', jobId);
+      const number = getJob(db, jobId)!.number;
       const start = new Date(job.scheduledStart!).getTime();
       const hoursUntil = (start - now.getTime()) / 3_600_000;
       if (hoursUntil <= 0 || hoursUntil > 24) continue;
@@ -102,7 +155,7 @@ export function runScheduledTexts(db: DB, now = new Date()): string[] {
       const { body, link } = composeText(db, 'reminder', job, client);
       sendJobText(db, job, client, 'reminder', body, link);
       db.prepare('UPDATE jobs SET reminder_sent_at = ? WHERE id = ?').run(now.toISOString(), jobId);
-      sent.push(`reminder ${job.number}`);
+      sent.push(`reminder ${number}`);
     }
   }
 
@@ -111,19 +164,19 @@ export function runScheduledTexts(db: DB, now = new Date()): string[] {
     const today = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
     const quotes = db
       .prepare(
-        `SELECT id FROM jobs WHERE status = 'quoted' AND approved_at IS NULL AND followup_count < ?
+        `SELECT id FROM quotes WHERE status = 'sent' AND approved_at IS NULL AND followup_count < ?
            AND (last_followup_on IS NULL OR last_followup_on < ?)
-           AND substr(COALESCE(quoted_at, created_at), 1, 10) < ?`,
+           AND substr(COALESCE(sent_at, created_at), 1, 10) < ?`,
       )
       .all(company.quoteFollowUpDays, today, today) as { id: number }[];
-    for (const { id: jobId } of quotes) {
-      const job = getJob(db, jobId)!;
-      const client = getClient(db, job.clientId)!;
-      if (job.total <= 0 || cannotText(db, client)) continue;
-      const { body, link } = composeText(db, 'quote_followup', job, client);
-      sendJobText(db, job, client, 'quote_followup', body, link);
-      db.prepare('UPDATE jobs SET followup_count = followup_count + 1, last_followup_on = ? WHERE id = ?').run(today, jobId);
-      sent.push(`follow-up ${job.number}`);
+    for (const { id: quoteId } of quotes) {
+      const quote = textSubject(db, 'quote', quoteId);
+      const client = getClient(db, quote.clientId)!;
+      if (quote.total <= 0 || cannotText(db, client)) continue;
+      const { body, link } = composeText(db, 'quote_followup', quote, client);
+      sendJobText(db, quote, client, 'quote_followup', body, link);
+      db.prepare('UPDATE quotes SET followup_count = followup_count + 1, last_followup_on = ? WHERE id = ?').run(today, quoteId);
+      sent.push(`follow-up ${getQuote(db, quoteId).number}`);
     }
   }
   return sent;
@@ -132,39 +185,39 @@ export function runScheduledTexts(db: DB, now = new Date()): string[] {
 export function createTextingApi(db: DB): Router {
   const api = Router();
 
-  /** The suggested wording for a kind of text, for the office to review before sending. */
-  api.get(
-    '/jobs/:id/text/:kind',
-    h((req) => {
-      const job = getJob(db, id(req));
-      if (!job) throw new HttpError(404, 'Job not found');
-      const kind = req.params.kind as TextKind;
-      if (!TEXT_KINDS.includes(kind)) throw new HttpError(400, 'Unknown message');
-      const client = getClient(db, job.clientId)!;
-      const { body } = composeText(db, kind, job, client);
-      return { body, to: client.phone, blocked: cannotText(db, client) };
-    }),
-  );
+  for (const [path, stage] of [['jobs', 'job'], ['quotes', 'quote'], ['requests', 'request']] as const) {
+    /** The suggested wording for a kind of text, for the office to review before sending. */
+    api.get(
+      `/${path}/:id/text/:kind`,
+      h((req) => {
+        const subject = textSubject(db, stage, id(req));
+        const kind = req.params.kind as TextKind;
+        if (!KINDS_FOR[stage].includes(kind)) throw new HttpError(400, 'Unknown message');
+        const client = getClient(db, subject.clientId)!;
+        const { body } = composeText(db, kind, subject, client);
+        return { body, to: client.phone, blocked: cannotText(db, client) };
+      }),
+    );
 
-  api.post(
-    '/jobs/:id/text',
-    h((req) => {
-      const job = getJob(db, id(req));
-      if (!job) throw new HttpError(404, 'Job not found');
-      const kind = String(req.body.kind ?? 'custom') as TextKind;
-      if (!TEXT_KINDS.includes(kind)) throw new HttpError(400, 'Unknown message');
-      const client = getClient(db, job.clientId)!;
-      const blocked = cannotText(db, client);
-      if (blocked) throw new HttpError(400, blocked);
-      // The office may edit the wording; links are regenerated so each text has a fresh sign-in link.
-      const standard = composeText(db, kind, job, client);
-      const body = String(req.body.body ?? standard.body).trim().slice(0, 1000);
-      if (!body) throw new HttpError(400, 'Write a message first');
-      const link = body.includes('{link}') ? (standard.link ?? createLoginLink(db, client.id)) : null;
-      sendJobText(db, job, client, kind, body, link);
-      return { ok: true };
-    }),
-  );
+    api.post(
+      `/${path}/:id/text`,
+      h((req) => {
+        const subject = textSubject(db, stage, id(req));
+        const kind = String(req.body.kind ?? 'custom') as TextKind;
+        if (!KINDS_FOR[stage].includes(kind)) throw new HttpError(400, 'Unknown message');
+        const client = getClient(db, subject.clientId)!;
+        const blocked = cannotText(db, client);
+        if (blocked) throw new HttpError(400, blocked);
+        // The office may edit the wording; links are regenerated so each text has a fresh sign-in link.
+        const standard = composeText(db, kind, subject, client);
+        const body = String(req.body.body ?? standard.body).trim().slice(0, 1000);
+        if (!body) throw new HttpError(400, 'Write a message first');
+        const link = body.includes('{link}') ? (standard.link ?? createLoginLink(db, client.id)) : null;
+        sendJobText(db, subject, client, kind, body, link);
+        return { ok: true };
+      }),
+    );
+  }
 
   api.patch(
     '/clients/:id/texting',

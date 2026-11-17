@@ -55,6 +55,7 @@ function mapInvoice(r: Row): Invoice {
     number: r.number,
     kind: r.kind ?? 'standard',
     jobId: r.job_id,
+    quoteId: r.quote_id ?? null,
     clientId: r.client_id,
     divisionId: r.division_id,
     status: r.status,
@@ -113,25 +114,29 @@ function reconcile(db: DB, invoiceId: number): string[] {
   return [];
 }
 
-/** A deposit invoice, due now, for a percentage of an approved estimate. */
-export function createDepositInvoice(db: DB, jobId: number, percent: number): Invoice {
-  const job = getJob(db, jobId);
-  if (!job) throw new HttpError(404, 'Job not found');
-  const amount = cents((job.total * percent) / 100);
+/** A deposit invoice, due now, for a percentage of an approved quote. Credited on the job's final invoice. */
+export function createDepositInvoice(
+  db: DB,
+  quote: { id: number; number: string; title: string; clientId: number; divisionId: number; total: number },
+  percent: number,
+): Invoice {
+  const amount = cents((quote.total * percent) / 100);
   const n = (db.prepare('SELECT COALESCE(MAX(id), 0) + 1001 AS n FROM invoices').get() as { n: number }).n;
+  // If the quote has already become a job, the deposit belongs to that job too.
+  const job = db.prepare('SELECT id FROM jobs WHERE quote_id = ?').get(quote.id) as { id: number } | undefined;
   const r = db
     .prepare(
-      `INSERT INTO invoices (number, job_id, client_id, division_id, kind, status, issue_date, due_date, tax_rate, public_token)
-       VALUES (?, ?, ?, ?, 'deposit', 'sent', ?, ?, 0, ?)`,
+      `INSERT INTO invoices (number, job_id, quote_id, client_id, division_id, kind, status, issue_date, due_date, tax_rate, public_token)
+       VALUES (?, ?, ?, ?, ?, 'deposit', 'sent', ?, ?, 0, ?)`,
     )
-    .run(`INV-${n}`, job.id, job.clientId, job.divisionId, localDate(), localDate(), randomBytes(16).toString('hex'));
+    .run(`INV-${n}`, job?.id ?? null, quote.id, quote.clientId, quote.divisionId, localDate(), localDate(), randomBytes(16).toString('hex'));
   const invoiceId = Number(r.lastInsertRowid);
   db.prepare('INSERT INTO invoice_items (invoice_id, description, quantity, unit_price) VALUES (?, ?, 1, ?)').run(
     invoiceId,
-    `Deposit (${percent}% of ${job.number} ${job.title})`,
+    `Deposit (${percent}% of ${quote.number} ${quote.title})`,
     amount,
   );
-  logActivity(db, 'invoice', `Deposit invoice INV-${n} for ${job.number}: $${amount.toFixed(2)}`, { jobId: job.id });
+  logActivity(db, 'invoice', `Deposit invoice INV-${n} for ${quote.number}: $${amount.toFixed(2)}`, { quoteId: quote.id, jobId: job?.id ?? null });
   return getInvoice(db, invoiceId);
 }
 

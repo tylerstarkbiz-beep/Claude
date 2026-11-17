@@ -7,6 +7,8 @@ import { DEMO } from '../env';
 import { money, shortDate, todayISO } from '../format';
 import { Button, Modal, Pill } from '../components/ui';
 import { InvoiceDocument } from '../components/InvoiceDocument';
+import { ChainBar } from '../components/Chain';
+import { NotesFeed } from '../components/NotesFeed';
 import { invoiceBadge } from './Invoices';
 import { PAYMENT_METHODS, type CompanySettings, type InvoiceDetail, type InvoiceItem } from '../../shared/types';
 
@@ -131,6 +133,10 @@ export function InvoiceDetailPage() {
         </div>
       )}
 
+      <div className="no-print mb-4">
+        <ChainBar kind="invoice" id={inv.id} />
+      </div>
+
       <InvoiceDocument
         invoice={inv}
         company={company}
@@ -168,6 +174,14 @@ export function InvoiceDetailPage() {
               </button>
             </div>
           ))}
+        </section>
+      )}
+
+      {(inv.jobId || inv.quoteId) && (
+        <section className="no-print card mt-4 p-5">
+          <h2 className="font-semibold">Notes & photos from this work</h2>
+          <p className="mb-4 text-xs text-slate-500">Everything recorded on the request, quote and job. Shared ones are visible to the client with this invoice in their portal.</p>
+          <NotesFeed stage={inv.jobId ? 'job' : 'quote'} id={(inv.jobId ?? inv.quoteId)!} chain readOnly />
         </section>
       )}
 

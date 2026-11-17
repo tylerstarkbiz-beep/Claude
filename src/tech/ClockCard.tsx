@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
-import { ArrowLeftRight, BookOpen, Briefcase, Building2, Car, Loader2, LogIn, LogOut, Wrench, X } from 'lucide-react';
+import { ArrowLeftRight, BookOpen, Clock, Briefcase, Building2, Car, Loader2, LogIn, LogOut, Wrench, X } from 'lucide-react';
 import { post, useApi } from '../api';
 import { useApp } from '../store';
 import { hm, time } from '../format';
@@ -17,6 +17,7 @@ function elapsed(from: string) {
 }
 
 const CATEGORY_ICONS: Record<string, typeof Wrench> = {
+  General: Clock,
   'Shop work': Building2,
   Travel: Car,
   'Office / admin': Briefcase,
@@ -88,7 +89,7 @@ export function ClockCard({ clock }: { clock: ReturnType<typeof useClock> }) {
                   </Link>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 font-medium">
-                    <GeneralIcon size={15} /> {entry.category ?? 'General time'}
+                    <GeneralIcon size={15} /> {!entry.category || entry.category === 'General' ? 'General time' : entry.category}
                     {entry.notes && <span className="font-normal text-slate-500">· {entry.notes}</span>}
                   </span>
                 )}
@@ -212,7 +213,7 @@ export function ClockChooser({ clock, current, onClose }: { clock: ReturnType<ty
                       onClick={() => pick(() => clock.clockInGeneral(c))}
                       className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-3 text-left text-sm font-medium active:bg-slate-50 disabled:opacity-50"
                     >
-                      <Icon size={18} className="text-sky-600" /> {c}
+                      <Icon size={18} className="text-sky-600" /> {c === 'General' ? 'General time' : c}
                     </button>
                   );
                 })}

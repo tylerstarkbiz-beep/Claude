@@ -85,9 +85,8 @@ export interface Client {
   createdAt: string;
 }
 
+// Requests and quotes are their own records now (see below); a job starts once a quote is accepted.
 export const JOB_STATUSES = [
-  'request',
-  'quoted',
   'scheduled',
   'in_progress',
   'completed',
@@ -98,8 +97,6 @@ export const JOB_STATUSES = [
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
 export const JOB_STATUS_META: Record<JobStatus, { label: string; color: string }> = {
-  request: { label: 'Request', color: '#64748b' },
-  quoted: { label: 'Quoted', color: '#8b5cf6' },
   scheduled: { label: 'Scheduled', color: '#0ea5e9' },
   in_progress: { label: 'In Progress', color: '#f59e0b' },
   completed: { label: 'Completed', color: '#10b981' },
@@ -132,14 +129,14 @@ export interface Job {
   total: number;
   /** When the job first reached Completed; revenue is recognized in this month. */
   completedAt: string | null;
-  /** 'portal' when the client requested it in the customer portal. */
+  /** 'portal' when it started from a client's portal request. */
   source: 'office' | 'portal';
-  /** When the client approved the estimate in the portal. */
-  approvedAt: string | null;
-  /** Deposit % for this estimate; null means the company default. */
+  /** Deposit % carried from the quote; null means the company default. */
   depositPercent: number | null;
   reminderSentAt: string | null;
-  followupCount: number;
+  /** The request and quote this job came from, if any. */
+  requestId: number | null;
+  quoteId: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -311,7 +308,7 @@ export interface TimeEntry {
 }
 
 /** Kinds of general time a tech can clock in to when they're not on a job. Not job-costed. */
-export const GENERAL_TIME_CATEGORIES = ['Shop work', 'Travel', 'Office / admin', 'Training', 'Equipment upkeep'] as const;
+export const GENERAL_TIME_CATEGORIES = ['General', 'Shop work', 'Travel', 'Office / admin', 'Training', 'Equipment upkeep'] as const;
 
 /** What a tech can clock in to right now. */
 export interface ClockOptions {
@@ -326,7 +323,7 @@ export interface ClockOptions {
 
 export interface Photo {
   id: number;
-  jobId: number;
+  jobId: number | null;
   noteId: number | null;
   authorId: number | null;
   url: string;
@@ -334,13 +331,113 @@ export interface Photo {
   createdAt: string;
 }
 
+/** Which step of the chain a note belongs to. */
+export type Stage = 'request' | 'quote' | 'job';
+
 export interface JobNote {
   id: number;
-  jobId: number;
+  /** Exactly one of these is set: the step the note was added on. */
+  jobId: number | null;
+  requestId: number | null;
+  quoteId: number | null;
+  stage: Stage;
+  /** e.g. REQ-1004, Q-1007 or RST-1012 */
+  stageNumber: string;
   authorId: number | null;
+  /** Shown to the client in their portal. Notes the client wrote are always visible to them. */
+  clientVisible: boolean;
+  /** Written by the client in the portal. */
+  fromClient: boolean;
   body: string;
   createdAt: string;
   photos: Photo[];
+}
+
+// ---------- Requests & quotes ----------
+
+export const REQUEST_STATUSES = ['new', 'assessment_scheduled', 'converted', 'archived'] as const;
+export type RequestStatus = (typeof REQUEST_STATUSES)[number];
+export const REQUEST_STATUS_META: Record<RequestStatus, { label: string; color: string }> = {
+  new: { label: 'New', color: '#0ea5e9' },
+  assessment_scheduled: { label: 'Assessment scheduled', color: '#f59e0b' },
+  converted: { label: 'Converted to quote', color: '#16a34a' },
+  archived: { label: 'Archived', color: '#94a3b8' },
+};
+
+/** A client asking for a visit to inspect and quote. Stays on the account after it becomes a quote. */
+export interface ServiceRequest {
+  id: number;
+  number: string;
+  clientId: number;
+  divisionId: number;
+  title: string;
+  details: string;
+  address: string | null;
+  preferredTimes: string | null;
+  source: 'office' | 'portal';
+  status: RequestStatus;
+  /** The visit to inspect and quote. */
+  assessmentStart: string | null;
+  assessmentEnd: string | null;
+  assessmentAssigneeId: number | null;
+  createdBy: number | null;
+  createdAt: string;
+}
+
+export const QUOTE_STATUSES = ['draft', 'sent', 'changes_requested', 'approved', 'declined', 'converted'] as const;
+export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
+export const QUOTE_STATUS_META: Record<QuoteStatus, { label: string; color: string }> = {
+  draft: { label: 'Draft', color: '#64748b' },
+  sent: { label: 'Awaiting approval', color: '#8b5cf6' },
+  changes_requested: { label: 'Changes requested', color: '#f59e0b' },
+  approved: { label: 'Approved', color: '#0ea5e9' },
+  declined: { label: 'Declined', color: '#94a3b8' },
+  converted: { label: 'Converted to job', color: '#16a34a' },
+};
+
+export interface QuoteItem {
+  id: number;
+  quoteId: number;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface Quote {
+  id: number;
+  number: string;
+  clientId: number;
+  divisionId: number;
+  requestId: number | null;
+  title: string;
+  description: string;
+  address: string | null;
+  status: QuoteStatus;
+  total: number;
+  /** null = company default */
+  depositPercent: number | null;
+  sentAt: string | null;
+  approvedAt: string | null;
+  /** 'client' when signed in the portal, otherwise the staff member's name who recorded a verbal/paper approval. */
+  approvedBy: string | null;
+  signerName: string | null;
+  followupCount: number;
+  createdAt: string;
+}
+
+export interface QuoteDetail extends Quote {
+  items: QuoteItem[];
+  client: Client;
+  /** PNG data URL of the client's signature, if signed in the portal. */
+  signature: string | null;
+}
+
+/** One record's place in the request → quote → job → invoice chain. */
+export interface Chain {
+  request: { id: number; number: string; status: RequestStatus; createdAt: string } | null;
+  quote: { id: number; number: string; status: QuoteStatus; total: number; approvedAt: string | null } | null;
+  job: { id: number; number: string; status: JobStatus; completedAt: string | null } | null;
+  invoices: { id: number; number: string; status: InvoiceStatus; kind: 'standard' | 'deposit'; total: number }[];
 }
 
 // ---------- Invoicing ----------
@@ -381,6 +478,8 @@ export interface Invoice {
   /** 'deposit' invoices are paid when an estimate is approved and credited on the final invoice. */
   kind: 'standard' | 'deposit';
   jobId: number | null;
+  /** Deposits are raised against the quote when it's approved, before the job exists. */
+  quoteId: number | null;
   clientId: number;
   divisionId: number | null;
   status: InvoiceStatus;
@@ -449,7 +548,7 @@ export interface DailyLog {
   jobs: Job[];
   tasksCompleted: Task[];
   tasksOpen: Task[];
-  notes: (JobNote & { job: { id: number; number: string; title: string } })[];
+  notes: (JobNote & { job: { id: number; number: string; title: string } | null })[];
 }
 
 /** One row in the team's daily overview. */

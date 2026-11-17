@@ -6,7 +6,7 @@ import { localDate } from './repo.ts';
 test('labor cost uses the rate in effect when the time was worked', async () => {
   const { call, userId, jobId, close } = await setup();
   const kim = userId('Kim Nguyen');
-  const job = jobId('Heat pump replacement');
+  const job = jobId('Quarterly PM — 6 rooftop units');
   const before = (await call('GET', `/jobs/${job}/costing`)).data;
 
   await call('PATCH', `/users/${kim}`, { hourlyRate: 40 });

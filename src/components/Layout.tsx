@@ -3,6 +3,8 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import {
   CalendarDays,
+  FileSignature,
+  Inbox,
   LogOut,
   HandCoins,
   CircleUserRound,
@@ -29,6 +31,8 @@ import type { Board, Permission } from '../../shared/types';
 const NAV: { to: string; label: string; icon: typeof Wrench; end?: boolean; perm?: Permission }[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/my-work', label: 'My Work', icon: CircleUserRound },
+  { to: '/requests', label: 'Requests', icon: Inbox },
+  { to: '/quotes', label: 'Quotes', icon: FileSignature, perm: 'view_financials' },
   { to: '/jobs', label: 'Jobs', icon: Wrench },
   { to: '/schedule', label: 'Schedule', icon: CalendarDays },
   { to: '/daily', label: 'Daily Logs', icon: NotebookPen },

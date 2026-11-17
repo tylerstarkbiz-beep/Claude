@@ -5,6 +5,10 @@ import { runScheduledTexts } from './texting.ts';
 
 const texts = (db: any, jobId?: number) =>
   db.prepare(`SELECT * FROM outbox WHERE channel = 'sms' ${jobId ? 'AND job_id = ?' : ''} ORDER BY id`).all(...(jobId ? [jobId] : [])) as any[];
+/** Texts whose wording mentions a title (quote and request texts aren't tied to a job). */
+const quoteTexts = (db: any, title: string) => db.prepare("SELECT * FROM outbox WHERE channel = 'sms' AND body LIKE ? ORDER BY id").all(`%${title}%`) as any[];
+const number = (db: any, table: string, title: string) => (db.prepare(`SELECT number FROM ${table} WHERE title = ?`).get(title) as { number: string }).number;
+const idOf = (db: any, table: string, title: string) => (db.prepare(`SELECT id FROM ${table} WHERE title = ?`).get(title) as { id: number }).id;
 
 /** A local-time Date `hours` from `base`. */
 const at = (base: Date, hours: number) => new Date(base.getTime() + hours * 3_600_000);
@@ -25,10 +29,19 @@ test('office can text a booking confirmation; opted-out or phoneless clients are
   assert.equal(sms.to_address, '+15553320198');
   assert.equal(sms.status, 'not_configured', 'waits in the outbox until Twilio is connected');
 
-  // Quote-ready texts carry a sign-in link straight to their estimates.
-  const quote = jobId('Estate cleanout — whole house');
-  await call('POST', `/jobs/${quote}/text`, { kind: 'quote_ready' });
-  assert.match(texts(db, quote)[0].link, /^\/portal\/login\?token=.+&next=%2Fportal%2Festimates$/);
+  // Quote-ready texts go from the quote and carry a sign-in link straight to the client's quotes.
+  const quote = idOf(db, 'quotes', 'Estate cleanout — whole house');
+  assert.equal((await call('POST', `/quotes/${quote}/text`, { kind: 'booking' })).status, 400, 'booking texts are for jobs and requests');
+  await call('POST', `/quotes/${quote}/text`, { kind: 'quote_ready' });
+  const [qt] = quoteTexts(db, 'Estate cleanout');
+  assert.equal(qt.job_id, null);
+  assert.match(qt.body, /your quote from Big Country Cleanup & Restoration for Estate cleanout/);
+  assert.match(qt.link, /^\/portal\/login\?token=.+&next=%2Fportal%2Fquotes$/);
+
+  // A request can confirm its assessment visit.
+  const reno = idOf(db, 'requests', 'Post-renovation cleaning');
+  const visit = await call('GET', `/requests/${reno}/text/booking`);
+  assert.match(visit.data.body, /booked with Big Country Cleanup & Restoration for an assessment visit \(Post-renovation cleaning\)/);
 
   const client = (await call('GET', `/jobs/${job}`)).data.client;
   await call('PATCH', `/clients/${client.id}/texting`, { optOut: true });
@@ -37,14 +50,15 @@ test('office can text a booking confirmation; opted-out or phoneless clients are
   assert.match(blocked.data.error, /opted out/);
 
   const { data: noPhone } = await call('POST', '/clients', { name: 'No Phone', email: 'np@example.com' });
-  const { data: j } = await call('POST', '/jobs', { divisionId: 1, clientId: noPhone.id, title: 'x' });
-  assert.match((await call('POST', `/jobs/${j.id}/text`, { kind: 'request_received' })).data.error, /doesn't have a mobile number/);
+  const { data: r } = await call('POST', '/requests', { divisionId: 1, clientId: noPhone.id, title: 'x' });
+  assert.match((await call('POST', `/requests/${r.id}/text`, { kind: 'request_received' })).data.error, /doesn't have a mobile number/);
   close();
 });
 
 test('24-hour reminders: sent once, only when booked ahead, re-armed when rescheduled, never overnight', async () => {
   const { call, db, jobId, close } = await setup();
   const job = jobId('Hot tub removal');
+  const N = number(db, 'jobs', 'Hot tub removal');
   const noon = new Date();
   noon.setHours(12, 0, 0, 0);
   // Booked days ago for tomorrow at 11am.
@@ -54,16 +68,16 @@ test('24-hour reminders: sent once, only when booked ahead, re-armed when resche
     at(noon, -72).toISOString(),
     job,
   );
-  assert.deepEqual(runScheduledTexts(db, at(noon, -3)).filter((s) => s.includes('JNK-1007')), [], 'more than 24h out: not yet');
-  assert.ok(runScheduledTexts(db, noon).includes('reminder JNK-1007'));
-  assert.ok(!runScheduledTexts(db, at(noon, 1)).includes('reminder JNK-1007'), 'only once');
+  assert.deepEqual(runScheduledTexts(db, at(noon, -3)).filter((s) => s.includes(N)), [], 'more than 24h out: not yet');
+  assert.ok(runScheduledTexts(db, noon).includes(`reminder ${N}`));
+  assert.ok(!runScheduledTexts(db, at(noon, 1)).includes(`reminder ${N}`), 'only once');
   assert.match(texts(db, job).at(-1).body, /^Reminder from Big Country/);
 
   // Rescheduling re-arms it; booking the new time today (less than a day ahead) skips the reminder.
   await call('PATCH', `/jobs/${job}`, { scheduledStart: iso(at(noon, 6)), scheduledEnd: iso(at(noon, 8)) }); // later today
   assert.equal((db.prepare('SELECT reminder_sent_at FROM jobs WHERE id = ?').get(job) as any).reminder_sent_at, null, 're-armed');
   db.prepare('UPDATE jobs SET booked_at = ? WHERE id = ?').run(noon.toISOString(), job); // as if rebooked at noon
-  assert.ok(!runScheduledTexts(db, noon).includes('reminder JNK-1007'));
+  assert.ok(!runScheduledTexts(db, noon).includes(`reminder ${N}`));
   assert.match((db.prepare('SELECT reminder_sent_at FROM jobs WHERE id = ?').get(job) as any).reminder_sent_at, /^skipped/);
 
   // Quiet hours: nothing goes out at 9pm.
@@ -73,27 +87,31 @@ test('24-hour reminders: sent once, only when booked ahead, re-armed when resche
   close();
 });
 
-test('daily estimate follow-ups: one a day, stop after the limit or once approved', async () => {
-  const { call, db, jobId, close } = await setup();
+test('daily quote follow-ups: one a day, stop after the limit or once approved', async () => {
+  const { call, db, close } = await setup();
   await call('PUT', '/settings/company', { quoteFollowUpDays: 2, textReminders: false });
-  const quote = jobId('Unit 4B mold remediation');
+  const mold = idOf(db, 'quotes', 'Unit 4B mold remediation');
+  const N = number(db, 'quotes', 'Unit 4B mold remediation');
+  db.prepare('UPDATE quotes SET followup_count = 0, last_followup_on = NULL WHERE id = ?').run(mold);
   const tenAm = new Date();
   tenAm.setHours(10, 30, 0, 0);
   const nextDay = (n: number) => at(tenAm, 24 * n);
 
   const nineAm = new Date(tenAm);
   nineAm.setHours(9);
-  assert.ok(!runScheduledTexts(db, nineAm).includes('follow-up RST-1003'), 'follow-ups wait until 10am');
-  assert.ok(runScheduledTexts(db, tenAm).includes('follow-up RST-1003'));
-  assert.ok(!runScheduledTexts(db, at(tenAm, 2)).includes('follow-up RST-1003'), 'once a day');
-  assert.ok(runScheduledTexts(db, nextDay(1)).includes('follow-up RST-1003'));
-  assert.ok(!runScheduledTexts(db, nextDay(2)).includes('follow-up RST-1003'), 'stops at the limit');
-  assert.equal(texts(db, quote).length, 2);
-  assert.match(texts(db, quote)[0].body, /just checking in on your estimate for Unit 4B mold remediation \(\$3,185\)/);
+  assert.ok(!runScheduledTexts(db, nineAm).includes(`follow-up ${N}`), 'follow-ups wait until 10am');
+  assert.ok(runScheduledTexts(db, tenAm).includes(`follow-up ${N}`));
+  assert.ok(!runScheduledTexts(db, at(tenAm, 2)).includes(`follow-up ${N}`), 'once a day');
+  assert.ok(runScheduledTexts(db, nextDay(1)).includes(`follow-up ${N}`));
+  assert.ok(!runScheduledTexts(db, nextDay(2)).includes(`follow-up ${N}`), 'stops at the limit');
+  const sent = quoteTexts(db, 'Unit 4B mold remediation');
+  assert.equal(sent.length, 2);
+  assert.match(sent[0].body, /just checking in on your quote for Unit 4B mold remediation \(\$3,185\)/);
 
-  // Approval stops them: another quote, approved before its first follow-up.
-  const estate = jobId('Estate cleanout — whole house');
-  db.prepare("UPDATE jobs SET approved_at = '2026-01-01T00:00:00Z' WHERE id = ?").run(estate);
-  assert.ok(!runScheduledTexts(db, nextDay(3)).includes('follow-up JNK-1008'));
+  // Only quotes awaiting approval get follow-ups: changes-requested, approved and draft quotes don't.
+  const estate = number(db, 'quotes', 'Estate cleanout — whole house');
+  const heat = number(db, 'quotes', 'Heat pump replacement');
+  const later = runScheduledTexts(db, nextDay(3));
+  assert.ok(!later.includes(`follow-up ${estate}`) && !later.includes(`follow-up ${heat}`));
   close();
 });

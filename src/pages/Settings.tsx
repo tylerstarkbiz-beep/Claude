@@ -271,7 +271,7 @@ function CompanyEditor() {
         <label className="flex items-start gap-2 text-sm sm:col-span-2">
           <input type="checkbox" className="mt-1" checked={data.quoteFollowUps} onChange={(e) => setData({ ...data, quoteFollowUps: e.target.checked })} />
           <span>
-            <b className="font-medium">Daily estimate follow-ups.</b> Text a link to approve each estimate that's still waiting, once a day at 10am, for up to{' '}
+            <b className="font-medium">Daily quote follow-ups.</b> Text a link to approve each sent quote that's still waiting, once a day at 10am, for up to{' '}
             <input
               id="company-followup-days"
               type="number"
@@ -284,7 +284,7 @@ function CompanyEditor() {
             days. They stop as soon as the client approves.
           </span>
         </label>
-        {field('depositPercent', 'Deposit when an estimate is approved (% of total, 0 for none)', 'number')}
+        {field('depositPercent', 'Deposit when a quote is approved (% of total, 0 for none)', 'number')}
         <div className="sm:col-span-2">
           <span className="label">Invoice footer</span>
           <textarea id="company-footer" className="input" rows={2} value={data.invoiceFooter} onChange={(e) => setData({ ...data, invoiceFooter: e.target.value })} />
@@ -414,7 +414,7 @@ function Outbox() {
     <>
       <h2 className="mb-1 font-semibold">Messages outbox</h2>
       <p className="mb-3 text-sm text-slate-500">
-        Texts and emails to clients: booking confirmations, reminders, estimate follow-ups, portal invites.
+        Texts and emails to clients: booking confirmations, reminders, quote follow-ups, portal invites.
         {waiting && ' Some are waiting because a messaging service isn\'t connected yet. You can copy a link and send it yourself.'}
       </p>
       <div className="card mb-10 divide-y divide-slate-100">

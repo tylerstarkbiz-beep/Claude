@@ -74,11 +74,15 @@ test("daily log fills today's checklist from templates and tracks the report thr
 test('job notes save photos to disk and serve them; deleting the note removes the files', async () => {
   const { call, origin, uploadDir, userId, jobId, close } = await setup();
   const job = jobId('Garage cleanout');
-  const { status, data: note } = await call('POST', `/jobs/${job}/notes`, {
-    authorId: userId('Tony Ruiz'),
-    body: 'Before photo',
-    photos: [{ dataUrl: PNG, caption: 'Garage' }],
-  });
+  // The author is whoever is signed in (Tony), not something the request can claim.
+  const { status, data: note } = await call(
+    'POST',
+    `/jobs/${job}/notes`,
+    { authorId: userId('Alex Morgan'), body: 'Before photo', photos: [{ dataUrl: PNG, caption: 'Garage' }] },
+    undefined,
+    userId('Tony Ruiz'),
+  );
+  assert.equal(note.authorId, userId('Tony Ruiz'));
   assert.equal(status, 200);
   assert.equal(note.photos.length, 1);
   const img = await fetch(origin + note.photos[0].url);
@@ -205,5 +209,17 @@ test('clock in to shop time or a job; job time is job-costed, shop time is not',
   assert.equal((await call('GET', `/time/status/${dana}`, undefined, undefined, chris)).status, 403);
   assert.equal((await call('POST', '/time', { userId: chris, jobId: pm, startedAt: '2026-01-05T08:00:00', endedAt: '2026-01-05T18:00:00' }, undefined, chris)).status, 403);
   assert.equal((await call('POST', '/time/clock-in', { userId: dana, jobId: pm }, undefined, marcus)).status, 200);
+  close();
+});
+
+test('clocking in with no kind, or leaving a job, lands on plain general time', async () => {
+  const { call, userId, jobId, close } = await setup();
+  const chris = userId('Chris Walker');
+  await call('POST', '/time/clock-in', { jobId: jobId('AC not cooling') }, undefined, chris);
+  const left = await call('POST', '/time/clock-in', { category: 'General' }, undefined, chris);
+  assert.equal(left.data.entry.jobId, null);
+  assert.equal(left.data.entry.category, 'General');
+  await call('POST', '/time/clock-out', {}, undefined, chris);
+  assert.equal((await call('POST', '/time/clock-in', {}, undefined, chris)).data.entry.category, 'General');
   close();
 });

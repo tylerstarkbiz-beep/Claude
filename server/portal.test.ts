@@ -58,36 +58,146 @@ test("clients only ever see their own records", async () => {
 
   const theirInvoice = db.prepare("SELECT id FROM invoices WHERE client_id = ? AND status != 'draft'").get(gonzalez) as { id: number };
   assert.equal((await call('GET', `/portal/invoices/${theirInvoice.id}`, undefined, session)).status, 404);
-  const theirQuote = db.prepare("SELECT id FROM jobs WHERE client_id != ? AND status = 'quoted'").get(harper) as { id: number };
-  assert.equal((await call('POST', `/portal/estimates/${theirQuote.id}/approve`, undefined, session)).status, 404);
+  const theirQuote = db.prepare("SELECT id FROM quotes WHERE client_id != ? AND status = 'sent'").get(harper) as { id: number };
+  assert.equal((await call('POST', `/portal/quotes/${theirQuote.id}/approve`, undefined, session)).status, 404);
+  assert.equal((await call('GET', `/portal/history/quote/${theirQuote.id}`, undefined, session)).status, 404);
+  const theirRequest = db.prepare('SELECT id FROM requests WHERE client_id != ?').get(harper) as { id: number };
+  assert.equal((await call('GET', `/portal/history/request/${theirRequest.id}`, undefined, session)).status, 404);
+  assert.ok(!(await call('GET', '/portal/quotes', undefined, session)).data.some((q: any) => q.id === theirQuote.id));
   assert.equal((await call('POST', `/portal/invoices/${theirInvoice.id}/pay`, { paymentMethodId: 'pm_x' }, session)).status, 503);
   close();
 });
 
-test('portal requests become jobs and run automations; estimates can be approved or questioned', async () => {
+test('portal requests (with photos) stay on the account; quotes can be approved and signed, or questioned', async () => {
   const { call, db, close } = await setup();
   const wells = clientId(db, 'David & Karen Wells');
   const { session } = await signIn(call, wells);
   const { data: me } = await call('GET', '/portal/me', undefined, session);
   const restoration = me.divisions.find((d: any) => d.name === 'Restoration');
 
-  const req = await call('POST', '/portal/requests', { divisionId: restoration.id, description: 'Water under the sink', preferredTimes: 'Mornings' }, session);
+  const req = await call(
+    'POST',
+    '/portal/requests',
+    { divisionId: restoration.id, summary: 'Leak under sink', description: 'Water under the sink', preferredTimes: 'Mornings', photos: [{ dataUrl: SIG }] },
+    session,
+  );
   assert.equal(req.status, 200);
-  assert.equal(req.data.status, 'request');
-  const row = db.prepare('SELECT source, description FROM jobs WHERE id = ?').get(req.data.id) as { source: string; description: string };
+  assert.match(req.data.number, /^REQ-/);
+  assert.equal(req.data.status, 'new');
+  const row = db.prepare('SELECT source, preferred_times FROM requests WHERE id = ?').get(req.data.id) as { source: string; preferred_times: string };
   assert.equal(row.source, 'portal');
-  assert.match(row.description, /Preferred times: Mornings/);
-  const task = db.prepare("SELECT title FROM tasks WHERE job_id = ? AND title LIKE 'Contact adjuster%'").get(req.data.id);
-  assert.ok(task, 'the "new restoration loss" automation ran');
+  assert.equal(row.preferred_times, 'Mornings');
+  const { data: history } = await call('GET', `/portal/history/request/${req.data.id}`, undefined, session);
+  assert.equal(history.notes[0].photos.length, 1, 'the client’s photos are on the request');
+  assert.ok((await call('GET', '/portal/requests', undefined, session)).data.some((r: any) => r.id === req.data.id));
 
-  const quote = (await call('GET', '/portal/jobs', undefined, session)).data.find((j: any) => j.status === 'quoted');
-  assert.equal((await call('POST', `/portal/estimates/${quote.id}/approve`, {}, session)).status, 400, 'a signature is required');
-  const approved = await call('POST', `/portal/estimates/${quote.id}/approve`, { signatureName: 'David Wells', signature: SIG }, session);
-  assert.ok(approved.data.approvedAt);
+  // The office sees it in Requests.
+  assert.ok((await call('GET', '/requests?open=1')).data.some((r: any) => r.id === req.data.id));
+
+  // Q-1002 (estate cleanout) has changes requested; the client can still approve it.
+  const estate = (await call('GET', '/portal/quotes', undefined, session)).data.find((q: any) => q.title.startsWith('Estate cleanout'));
+  assert.equal(estate.status, 'changes_requested');
+  assert.equal((await call('POST', `/portal/quotes/${estate.id}/approve`, {}, session)).status, 400, 'a signature is required');
+  await call('POST', `/portal/quotes/${estate.id}/changes`, { message: 'Can you start next week?' }, session);
+  const note = db.prepare('SELECT body, client_visible, author_id FROM job_notes WHERE quote_id = ? ORDER BY id DESC').get(estate.id) as Record<string, any>;
+  assert.match(note.body, /Can you start next week\?/);
+  assert.equal(note.author_id, null);
+  const approved = await call('POST', `/portal/quotes/${estate.id}/approve`, { signatureName: 'David Wells', signature: SIG }, session);
+  assert.equal(approved.data.status, 'approved');
   assert.equal(approved.data.signature.name, 'David Wells');
-  await call('POST', `/portal/estimates/${quote.id}/changes`, { message: 'Can you start next week?' }, session);
-  const note = db.prepare('SELECT body FROM job_notes WHERE job_id = ? ORDER BY id DESC').get(quote.id) as { body: string };
-  assert.match(note.body, /From David & Karen Wells \(portal\): Can you start next week\?/);
+
+  // Drafts never show in the portal.
+  const draft = await call('POST', '/quotes', { clientId: wells, divisionId: restoration.id, title: 'Internal draft' });
+  assert.ok(!(await call('GET', '/portal/quotes', undefined, session)).data.some((q: any) => q.id === draft.data.id));
+  close();
+});
+
+test('the full chain: request → quote → job → invoice, with notes and photos carried through', async () => {
+  const { call, db, userId, close } = await setup();
+  const chen = clientId(db, 'Robert Chen');
+  const restoration = (db.prepare("SELECT id FROM divisions WHERE slug = 'restoration'").get() as { id: number }).id;
+  const { session } = await signIn(call, chen);
+  const marcus = userId('Marcus Reed');
+
+  // 1. Request from the office, with an assessment visit booked.
+  const { data: req } = await call('POST', '/requests', { clientId: chen, divisionId: restoration, title: 'Water stain on ceiling', details: 'Brown stain spreading in hallway' });
+  assert.equal(req.status, 'new');
+  const booked = await call('PATCH', `/requests/${req.id}`, { assessmentStart: '2026-12-01T09:00', assessmentEnd: '2026-12-01T10:00', assessmentAssigneeId: marcus });
+  assert.equal(booked.data.status, 'assessment_scheduled');
+  await call('POST', `/requests/${req.id}/notes`, { body: 'Found a slow leak from the upstairs toilet supply.', photos: [{ dataUrl: SIG }], clientVisible: true }, undefined, marcus);
+  await call('POST', `/requests/${req.id}/notes`, { body: 'Internal: homeowner may file a claim.' }, undefined, marcus);
+
+  // 2. Convert to a quote: details carry over; the request stays, marked converted.
+  const { data: quote } = await call('POST', `/requests/${req.id}/quote`);
+  assert.match(quote.number, /^Q-/);
+  assert.equal(quote.title, 'Water stain on ceiling');
+  assert.equal(quote.description, 'Brown stain spreading in hallway');
+  assert.equal((await call('GET', `/requests/${req.id}`)).data.status, 'converted');
+  assert.equal((await call('POST', `/requests/${req.id}/quote`)).status, 409, 'one quote per request');
+  assert.equal((await call('POST', `/quotes/${quote.id}/send`)).status, 400, 'needs line items first');
+  await call('POST', `/quotes/${quote.id}/items`, { description: 'Ceiling drywall repair', quantity: 1, unitPrice: 600 });
+  await call('POST', `/quotes/${quote.id}/items`, { description: 'Drying (2 days)', quantity: 2, unitPrice: 200 });
+  await call('PATCH', `/quotes/${quote.id}`, { depositPercent: 10 });
+  assert.equal((await call('POST', `/quotes/${quote.id}/job`)).status, 409, 'not approved yet');
+  await call('POST', `/quotes/${quote.id}/send`);
+
+  // 3. Client approves and signs in the portal; the 10% deposit invoice is raised on the quote.
+  const approved = await call('POST', `/portal/quotes/${quote.id}/approve`, { signatureName: 'Robert Chen', signature: SIG }, session);
+  assert.equal(approved.data.deposit.amount, 100);
+  assert.equal((await call('POST', `/portal/quotes/${quote.id}/approve`, { signatureName: 'Robert Chen', signature: SIG }, session)).status, 409, 'only once');
+  assert.equal((await call('PATCH', `/quotes/${quote.id}`, { title: 'Changed' })).status, 409, 'approved quotes are locked');
+  await call('POST', `/invoices/${approved.data.deposit.invoiceId}/payments`, { amount: 100, method: 'Card' });
+
+  // 4. Convert to a job: line items, links and the deposit come along; automations run.
+  const { data: job } = await call('POST', `/quotes/${quote.id}/job`);
+  assert.equal(job.total, 1000);
+  assert.equal(job.requestId, req.id);
+  assert.equal(job.quoteId, quote.id);
+  assert.equal(job.depositPercent, 10);
+  assert.ok(db.prepare("SELECT 1 FROM tasks WHERE job_id = ? AND title LIKE 'Contact adjuster%'").get(job.id), 'the "new restoration job" automation ran');
+  assert.equal((await call('GET', `/quotes/${quote.id}`)).data.status, 'converted');
+  assert.equal((await call('POST', `/quotes/${quote.id}/job`)).status, 409, 'only once');
+  await call('POST', `/jobs/${job.id}/notes`, { body: 'Drywall patched and painted.', clientVisible: true }, undefined, marcus);
+
+  // 5. Invoice the job: the paid deposit is credited.
+  const { data: inv } = await call('POST', '/invoices', { jobId: job.id });
+  assert.ok(inv.items.some((i: any) => i.unitPrice === -100));
+  await call('POST', `/invoices/${inv.id}/send`);
+
+  // Every step links to the whole chain, from any step.
+  for (const [kind, rid] of [['requests', req.id], ['quotes', quote.id], ['jobs', job.id], ['invoices', inv.id]] as const) {
+    const { data: chain } = await call('GET', `/${kind}/${rid}/chain`);
+    assert.equal(chain.request.id, req.id, `${kind} → request`);
+    assert.equal(chain.quote.id, quote.id, `${kind} → quote`);
+    assert.equal(chain.job.id, job.id, `${kind} → job`);
+    assert.deepEqual(chain.invoices.map((i: any) => i.kind).sort(), ['deposit', 'standard']);
+  }
+
+  // The job shows notes from every step; the client sees only what was shared with them.
+  const { data: all } = await call('GET', `/jobs/${job.id}/notes?chain=1`);
+  assert.deepEqual(all.map((n: any) => n.stage).sort(), ['job', 'request', 'request']);
+  const { data: shared } = await call('GET', `/portal/history/invoice/${inv.id}`, undefined, session);
+  assert.deepEqual(shared.notes.map((n: any) => n.body).sort(), ['Drywall patched and painted.', 'Found a slow leak from the upstairs toilet supply.']);
+  assert.equal(shared.notes.find((n: any) => n.stage === 'request').photos.length, 1);
+
+  // Requests and quotes stay on the client's account after conversion.
+  assert.ok((await call('GET', `/requests?clientId=${chen}`)).data.some((r: any) => r.id === req.id && r.status === 'converted'));
+  assert.ok((await call('GET', `/quotes?clientId=${chen}`)).data.some((q: any) => q.id === quote.id && q.status === 'converted'));
+  // A converted request can't be deleted (it's history).
+  assert.equal((await call('DELETE', `/requests/${req.id}`)).status, 409);
+  close();
+});
+
+test('office can record a verbal approval; techs without Manage jobs cannot convert', async () => {
+  const { call, db, userId, close } = await setup();
+  const tony = userId('Tony Ruiz');
+  const estate = db.prepare("SELECT id FROM quotes WHERE title LIKE 'Estate cleanout%'").get() as { id: number };
+  assert.equal((await call('POST', `/quotes/${estate.id}/approve`, undefined, undefined, tony)).status, 403);
+  const ok = await call('POST', `/quotes/${estate.id}/approve`);
+  assert.equal(ok.data.status, 'approved');
+  assert.equal(ok.data.approvedBy, 'Alex Morgan');
+  assert.equal((await call('POST', `/quotes/${estate.id}/job`, undefined, undefined, tony)).status, 403);
+  assert.equal((await call('POST', `/quotes/${estate.id}/job`)).status, 200);
   close();
 });
 
@@ -229,30 +339,31 @@ test('office can charge a saved card; card payments are off without Stripe keys'
 });
 
 test('approving takes a 25% deposit; paying it does not close the job; the final invoice credits it', async () => {
-  const { call, db, jobId, close } = await setup();
-  const wells = clientId(db, 'David & Karen Wells');
-  const { session } = await signIn(call, wells);
-  const heatPump = jobId('Heat pump replacement'); // $11,475 estimate
-  const res = await call('POST', `/portal/estimates/${heatPump}/approve`, { signatureName: 'Karen Wells', signature: SIG }, session);
-  assert.equal(res.data.deposit.amount, 2868.75);
+  const { call, db, close } = await setup();
+  const riverbend = clientId(db, 'Riverbend Apartments');
+  const { session } = await signIn(call, riverbend);
+  const mold = db.prepare("SELECT id FROM quotes WHERE title = 'Unit 4B mold remediation'").get() as { id: number }; // $3,185
+  const res = await call('POST', `/portal/quotes/${mold.id}/approve`, { signatureName: 'Dana Riverbend', signature: SIG }, session);
+  assert.equal(res.data.deposit.amount, 796.25);
   assert.equal(res.data.deposit.status, 'sent');
-  assert.equal((await call('POST', `/portal/estimates/${heatPump}/approve`, { signatureName: 'Karen Wells', signature: SIG }, session)).status, 409, 'only once');
 
-  const { data: estimate } = await call('GET', `/jobs/${heatPump}/estimate`);
-  assert.equal(estimate.signature.name, 'Karen Wells');
-  assert.equal(estimate.signature.total, 11475);
+  const { data: q } = await call('GET', `/quotes/${mold.id}`);
+  assert.equal(q.signerName, 'Dana Riverbend');
+  assert.match(q.signature, /^data:image\/png/);
 
-  await call('POST', `/invoices/${res.data.deposit.invoiceId}/payments`, { amount: 2868.75, method: 'Check' });
-  assert.equal((await call('GET', `/jobs/${heatPump}`)).data.status, 'quoted', 'a deposit does not mark the job paid');
+  await call('POST', `/invoices/${res.data.deposit.invoiceId}/payments`, { amount: 796.25, method: 'Check' });
+  const { data: job } = await call('POST', `/quotes/${mold.id}/job`);
+  assert.equal((await call('GET', `/jobs/${job.id}`)).data.status, 'scheduled', 'a deposit does not mark the job paid');
 
-  const { data: final } = await call('POST', '/invoices', { jobId: heatPump });
-  assert.ok(final.items.some((i: any) => i.description.startsWith('Less deposit paid') && i.unitPrice === -2868.75));
-  assert.equal(final.total, 11475 - 2868.75);
+  const { data: final } = await call('POST', '/invoices', { jobId: job.id });
+  assert.ok(final.items.some((i: any) => i.description.startsWith('Less deposit paid') && i.unitPrice === -796.25));
+  assert.equal(final.total, 3185 - 796.25);
 
-  // A per-job override of 0% means no deposit.
-  const estate = jobId('Estate cleanout — whole house');
-  await call('PATCH', `/jobs/${estate}`, { depositPercent: 0 });
-  const r2 = await call('POST', `/portal/estimates/${estate}/approve`, { signatureName: 'Karen Wells', signature: SIG }, session);
+  // A per-quote override of 0% means no deposit.
+  const estate = db.prepare("SELECT id FROM quotes WHERE title LIKE 'Estate cleanout%'").get() as { id: number };
+  await call('PATCH', `/quotes/${estate.id}`, { depositPercent: 0 });
+  const wells = await signIn(call, clientId(db, 'David & Karen Wells'));
+  const r2 = await call('POST', `/portal/quotes/${estate.id}/approve`, { signatureName: 'Karen Wells', signature: SIG }, wells.session);
   assert.equal(r2.data.deposit, null);
   close();
 });
