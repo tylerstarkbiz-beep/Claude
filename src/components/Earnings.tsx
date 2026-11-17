@@ -65,7 +65,7 @@ function KindChip({ kind }: { kind: EarningKind }) {
 /** Whether the current viewer may remove an entry (mirrors the server rule). */
 function useCanEdit() {
   const app = useApp();
-  return (e: Earning) => app.can('manage_pay') || (e.userId === app.currentUserId && e.kind === 'tip' && !e.paidOutAt);
+  return (_e: Earning) => app.can('manage_pay');
 }
 
 /** One person's month: totals, six-month trend, and every entry. */
@@ -155,7 +155,11 @@ export function EarningsTracker({
 
       <HistoryChart history={data.history} selected={month} onSelect={onMonthChange} />
 
-      {(manage || self) && <LogEarning userId={userId} onSaved={reload} />}
+      {manage ? (
+        <LogEarning userId={userId} onSaved={reload} />
+      ) : (
+        <p className="px-1 text-xs text-slate-500">Commissions and tips are added by the office once they're verified as paid on the job.</p>
+      )}
 
       <section className="card">
         <h3 className="border-b border-slate-100 px-4 py-3 font-semibold">Entries · {monthLabel(month)}</h3>
@@ -274,7 +278,7 @@ function HistoryChart({ history, selected, onSelect }: { history: EarningsSummar
   );
 }
 
-/** Log a commission (pay managers) or a tip (anyone, for themselves) against a person, optionally on one of their jobs. */
+/** Owners/admins log a verified commission or tip against a person, optionally on one of their jobs. */
 function LogEarning({ userId, onSaved }: { userId: number; onSaved: () => void }) {
   const app = useApp();
   const manage = app.can('manage_pay');
@@ -305,7 +309,7 @@ function LogEarning({ userId, onSaved }: { userId: number; onSaved: () => void }
   return (
     <form onSubmit={submit} className="card space-y-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-semibold">{manage ? 'Log a commission or tip' : 'Log a tip'}</h3>
+        <h3 className="font-semibold">Log a commission or tip</h3>
         {manage && (
           <div className="inline-flex rounded-lg bg-slate-100 p-0.5 text-sm">
             {(['commission', 'tip'] as const).map((k) => (
@@ -412,7 +416,7 @@ export function JobEarningsCard({ job, onChange, large }: { job: Pick<Job, 'id' 
   return (
     <section className={clsx('card', large ? 'p-4' : 'p-5')}>
       <div className="mb-3 flex items-baseline justify-between gap-2">
-        <h2 className="font-semibold">{manage ? 'Commissions & tips' : 'My tips & commission'}</h2>
+        <h2 className="font-semibold">{manage ? 'Commissions & tips' : 'My commission & tips'}</h2>
         <Link to={large ? '/tech/pay' : '/earnings'} className="text-xs text-brand-600 hover:underline">
           {manage ? 'Earnings tracker' : 'My tracker'} →
         </Link>
@@ -434,61 +438,71 @@ export function JobEarningsCard({ job, onChange, large }: { job: Pick<Job, 'id' 
           ))}
         </ul>
       ) : (
-        <p className="mb-3 text-sm text-slate-500">{manage ? 'No commissions or tips logged on this job.' : 'Nothing logged for you on this job yet.'}</p>
+        <p className="mb-3 text-sm text-slate-500">{manage ? 'No commissions or tips logged on this job.' : 'Nothing added for you on this job yet.'}</p>
       )}
-      <form onSubmit={submit} className="space-y-2">
-        {manage && (
-          <div className="flex flex-wrap gap-2">
-            <div className="inline-flex rounded-lg bg-slate-100 p-0.5 text-sm">
-              {(['commission', 'tip'] as const).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setKind(k)}
-                  className={clsx('rounded-md px-3 py-1', kind === k ? 'bg-white font-medium shadow-sm' : 'text-slate-500')}
-                >
-                  {KIND_META[k].label}
-                </button>
-              ))}
+      {!manage ? (
+        <p className="text-xs text-slate-500">The office adds commissions and tips once they're verified as paid out from the job.</p>
+      ) : (
+        <form onSubmit={submit} className="space-y-2">
+          {manage && (
+            <div className="flex flex-wrap gap-2">
+              <div className="inline-flex rounded-lg bg-slate-100 p-0.5 text-sm">
+                {(['commission', 'tip'] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setKind(k)}
+                    className={clsx('rounded-md px-3 py-1', kind === k ? 'bg-white font-medium shadow-sm' : 'text-slate-500')}
+                  >
+                    {KIND_META[k].label}
+                  </button>
+                ))}
+              </div>
+              <select
+                id="job-earning-person"
+                className="input w-auto flex-1"
+                value={who ?? ''}
+                onChange={(e) => setWho(Number(e.target.value) || null)}
+                required
+              >
+                <option value="">Who earned it?</option>
+                {app.activeUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                    {u.commissionRate ? ` (${u.commissionRate}%)` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
-            <select id="job-earning-person" className="input w-auto flex-1" value={who ?? ''} onChange={(e) => setWho(Number(e.target.value) || null)} required>
-              <option value="">Who earned it?</option>
-              {app.activeUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                  {u.commissionRate ? ` (${u.commissionRate}%)` : ''}
-                </option>
-              ))}
-            </select>
+          )}
+          <div className="flex gap-2">
+            <input
+              id="job-earning-amount"
+              className={clsx('input w-32', large && 'py-2.5 text-base')}
+              type="number"
+              min="0.01"
+              step="0.01"
+              required={!suggested}
+              placeholder={suggested ? money(suggested) : '$ amount'}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+            <input
+              id="job-earning-note"
+              className={clsx('input flex-1', large && 'py-2.5 text-base')}
+              placeholder={kind === 'tip' ? 'Cash, check…' : 'Note'}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+            <Button className={large ? 'px-4' : undefined}>Add</Button>
           </div>
-        )}
-        <div className="flex gap-2">
-          <input
-            id="job-earning-amount"
-            className={clsx('input w-32', large && 'py-2.5 text-base')}
-            type="number"
-            min="0.01"
-            step="0.01"
-            required={!suggested}
-            placeholder={suggested ? money(suggested) : '$ amount'}
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-          />
-          <input
-            id="job-earning-note"
-            className={clsx('input flex-1', large && 'py-2.5 text-base')}
-            placeholder={kind === 'tip' ? 'Cash, check…' : 'Note'}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-          <Button className={large ? 'px-4' : undefined}>{manage ? 'Add' : 'Log tip'}</Button>
-        </div>
-        {suggested && !amount && (
-          <p className="text-xs text-slate-500">
-            Leave blank to use {person!.name.split(' ')[0]}'s {person!.commissionRate}% of {money(job.total)} = {money(suggested)}
-          </p>
-        )}
-      </form>
+          {suggested && !amount && (
+            <p className="text-xs text-slate-500">
+              Leave blank to use {person!.name.split(' ')[0]}'s {person!.commissionRate}% of {money(job.total)} = {money(suggested)}
+            </p>
+          )}
+        </form>
+      )}
     </section>
   );
 }

@@ -93,11 +93,9 @@ const getEarning = (db: DB, earningId: number) => {
   return mapEarning(row);
 };
 
-/** Logging rules: commissions need manage_pay; anyone may log their own tips. */
-function assertCanWrite(me: User, kind: EarningKind, userId: number) {
-  if (userCan(me, 'manage_pay')) return;
-  if (kind === 'commission') throw new HttpError(403, 'Only owners and admins can log commissions');
-  if (userId !== me.id) throw new HttpError(403, 'You can only log your own tips');
+/** Only owners/admins (manage_pay) add, change or remove entries, once the money is verified. Techs can only read their own. */
+function assertCanWrite(me: User) {
+  if (!userCan(me, 'manage_pay')) throw new HttpError(403, 'Only owners and admins can add or change commissions and tips');
 }
 
 function input(db: DB, b: Row, current?: Earning) {
@@ -169,7 +167,7 @@ export function createEarningsApi(db: DB): Router {
     h((req) => {
       const me = requireActor(db, req);
       const e = input(db, { userId: me.id, ...req.body });
-      assertCanWrite(me, e.kind, e.userId);
+      assertCanWrite(me);
       const r = db
         .prepare('INSERT INTO earnings (user_id, job_id, kind, amount, note, earned_on, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
         .run(e.userId, e.jobId, e.kind, e.amount, e.note, e.earnedOn, me.id, localDateTime());
@@ -182,10 +180,9 @@ export function createEarningsApi(db: DB): Router {
     h((req) => {
       const me = requireActor(db, req);
       const current = getEarning(db, id(req));
-      assertCanWrite(me, current.kind, current.userId);
-      if (current.paidOutAt && !userCan(me, 'manage_pay')) throw new HttpError(409, 'This was already paid out');
+      assertCanWrite(me);
       const e = input(db, req.body, current);
-      assertCanWrite(me, e.kind, e.userId);
+      assertCanWrite(me);
       db.prepare('UPDATE earnings SET user_id = ?, job_id = ?, kind = ?, amount = ?, note = ?, earned_on = ? WHERE id = ?').run(
         e.userId,
         e.jobId,
@@ -202,12 +199,7 @@ export function createEarningsApi(db: DB): Router {
   api.delete(
     '/earnings/:id',
     h((req) => {
-      const me = requireActor(db, req);
-      const row = db.prepare(`${SELECT} WHERE e.id = ?`).get(id(req));
-      if (!row) return;
-      const current = mapEarning(row);
-      assertCanWrite(me, current.kind, current.userId);
-      if (current.paidOutAt && !userCan(me, 'manage_pay')) throw new HttpError(409, 'This was already paid out');
+      assertCanWrite(requireActor(db, req));
       db.prepare('DELETE FROM earnings WHERE id = ?').run(id(req));
     }),
   );

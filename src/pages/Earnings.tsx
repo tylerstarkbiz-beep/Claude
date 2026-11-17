@@ -24,7 +24,7 @@ export function Earnings() {
         subtitle={
           manage
             ? "Log commissions, check anyone's tracker and mark payouts. Each person can only see their own."
-            : 'What you have earned on top of hourly pay. Only you and the owners can see this.'
+            : 'What you have earned on top of hourly pay, added by the office once verified. Only you and the owners can see this.'
         }
       />
       <div className={clsx(manage && 'grid gap-6 lg:grid-cols-[320px_1fr]')}>

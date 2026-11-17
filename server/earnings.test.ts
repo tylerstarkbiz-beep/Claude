@@ -37,34 +37,36 @@ test('each tech sees only their own tracker; pay managers see everyone', async (
   close();
 });
 
-test('logging rules: commissions by pay managers, tips by the tech themselves', async () => {
+test('only pay managers can add, change or remove commissions and tips', async () => {
   const { call, userId, jobId, close } = await setup();
   const tony = userId('Tony Ruiz');
   const dana = userId('Dana Cruz');
   const owner = userId('Alex Morgan');
+  const office = userId('Jordan Lee');
   const job = jobId('Garage cleanout');
 
+  // Techs can't add anything to their own tracker, commission or tip; neither can office staff without the permission.
   assert.equal((await call('POST', '/earnings', { kind: 'commission', amount: 50, jobId: job }, undefined, tony)).status, 403);
-  assert.equal((await call('POST', '/earnings', { kind: 'tip', amount: 20, userId: dana }, undefined, tony)).status, 403);
-  assert.equal((await call('POST', '/earnings', { kind: 'tip', amount: 0 }, undefined, tony)).status, 400);
+  assert.equal((await call('POST', '/earnings', { kind: 'tip', amount: 20, jobId: job }, undefined, tony)).status, 403);
+  assert.equal((await call('POST', '/earnings', { kind: 'tip', amount: 20, userId: tony }, undefined, office)).status, 403);
+  assert.equal((await call('POST', '/earnings', { kind: 'tip', amount: 0, userId: tony }, undefined, owner)).status, 400);
 
   const before = (await call('GET', '/earnings', undefined, undefined, tony)).data.totals;
-  const tip = await call('POST', '/earnings', { kind: 'tip', amount: 20, jobId: job, note: 'Cash' }, undefined, tony);
+  const tip = await call('POST', '/earnings', { kind: 'tip', amount: 20, userId: tony, jobId: job, note: 'Cash' }, undefined, owner);
   assert.equal(tip.status, 200);
   assert.equal(tip.data.userId, tony);
-  assert.equal(tip.data.jobNumber?.length > 0, true);
-
+  assert.ok(tip.data.jobNumber);
   const comm = await call('POST', '/earnings', { kind: 'commission', amount: 33.5, userId: tony, jobId: job }, undefined, owner);
   assert.equal(comm.status, 200);
   const after = (await call('GET', '/earnings', undefined, undefined, tony)).data.totals;
   assert.equal(after.tip, before.tip + 20);
   assert.equal(after.commission, Math.round((before.commission + 33.5) * 100) / 100);
 
-  // Techs can't change commissions, even their own; can edit their own tips.
+  // Techs can't edit or delete entries either, even their own.
   assert.equal((await call('PATCH', `/earnings/${comm.data.id}`, { amount: 500 }, undefined, tony)).status, 403);
-  assert.equal((await call('PATCH', `/earnings/${tip.data.id}`, { kind: 'commission' }, undefined, tony)).status, 403);
-  assert.equal((await call('PATCH', `/earnings/${tip.data.id}`, { amount: 25 }, undefined, tony)).data.amount, 25);
-  assert.equal((await call('DELETE', `/earnings/${tip.data.id}`, undefined, undefined, dana)).status, 403);
+  assert.equal((await call('PATCH', `/earnings/${tip.data.id}`, { amount: 200 }, undefined, tony)).status, 403);
+  assert.equal((await call('DELETE', `/earnings/${tip.data.id}`, undefined, undefined, tony)).status, 403);
+  assert.equal((await call('PATCH', `/earnings/${tip.data.id}`, { amount: 25 }, undefined, owner)).data.amount, 25);
 
   // A job's entries: the tech sees only theirs; the owner sees all.
   await call('POST', '/earnings', { kind: 'tip', amount: 10, userId: dana, jobId: job }, undefined, owner);
@@ -79,7 +81,7 @@ test('logging rules: commissions by pay managers, tips by the tech themselves', 
   close();
 });
 
-test('payouts clear the unpaid balance and lock entries for techs', async () => {
+test('payouts clear the unpaid balance', async () => {
   const { call, userId, close } = await setup();
   const tony = userId('Tony Ruiz');
   const owner = userId('Alex Morgan');
@@ -91,9 +93,6 @@ test('payouts clear the unpaid balance and lock entries for techs', async () => 
   assert.equal(paid.status, 200);
   assert.equal(paid.data.unpaid, 0);
   assert.equal(paid.data.totals.total, start.totals.total, 'still counts as earned this month');
-
-  const tip = paid.data.entries.find((e: { kind: string }) => e.kind === 'tip');
-  assert.equal((await call('DELETE', `/earnings/${tip.id}`, undefined, undefined, tony)).status, 409);
 
   const undone = await call('POST', '/earnings/payout', { userId: tony, month, undo: true }, undefined, owner);
   assert.equal(undone.data.unpaid, start.unpaid);
