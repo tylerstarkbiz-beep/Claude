@@ -94,7 +94,7 @@ export function Dashboard() {
                 <div>
                   <div className="font-medium">{app.user(c.userId)?.name}</div>
                   <div className="text-xs text-slate-500">
-                    {job ? `${job.number} · ${job.title}` : 'General time'} · {hm(minutesSince(c.startedAt))}
+                    {job ? `${job.number} · ${job.title}` : (c.category ?? 'General time')} · {hm(minutesSince(c.startedAt))}
                   </div>
                 </div>
               </Link>

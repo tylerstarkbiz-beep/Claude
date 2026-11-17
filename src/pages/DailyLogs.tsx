@@ -425,7 +425,10 @@ function Timeline({ log }: { log: DailyLog }) {
                   <span className="font-mono text-xs text-slate-400">{e.job.number}</span> {e.job.title}
                 </Link>
               ) : (
-                <span className="text-slate-600">{e.notes || 'General time'}</span>
+                <span className="text-slate-600">
+                  {e.category ?? 'General time'}
+                  {e.notes && ` · ${e.notes}`}
+                </span>
               )}
             </div>
           </div>

@@ -75,12 +75,26 @@ export function TechJob() {
 
       <section className="grid grid-cols-2 gap-2">
         {timing ? (
-          <button onClick={() => clock.clockIn(null)} disabled={clock.busy} className="flex items-center justify-center gap-2 rounded-xl bg-amber-500 py-4 font-semibold text-white">
-            <Square size={18} /> Stop job timer
+          <button
+            onClick={() => clock.clockInGeneral('Shop work')}
+            disabled={clock.busy}
+            className="flex flex-col items-center justify-center rounded-xl bg-amber-500 py-2.5 font-semibold text-white"
+          >
+            <span className="flex items-center gap-2">
+              <Square size={18} /> Leave this job
+            </span>
+            <span className="text-xs font-normal opacity-90">Back to shop time</span>
           </button>
         ) : (
-          <button onClick={() => clock.clockIn(job.id)} disabled={clock.busy} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 py-4 font-semibold text-white">
-            <Play size={18} /> Start job timer
+          <button
+            onClick={() => clock.clockInJob(job)}
+            disabled={clock.busy}
+            className="flex flex-col items-center justify-center rounded-xl bg-emerald-600 py-2.5 font-semibold text-white"
+          >
+            <span className="flex items-center gap-2">
+              <Play size={18} /> {clock.status?.entry ? 'Switch to this job' : 'Clock in to this job'}
+            </span>
+            <span className="text-xs font-normal opacity-90">Time counts toward this job</span>
           </button>
         )}
         {['completed', 'invoiced', 'paid'].includes(job.status) ? (

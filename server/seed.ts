@@ -532,8 +532,12 @@ function seedFieldData(db: DB, ids: { userIds: Record<string, number>; jobIds: R
 
   // Time entries: a shop block, then job time, for the crew over the last four days.
   const rates = Object.fromEntries(USERS.map(([name, , , , , rate]) => [userIds[name], rate]));
-  const timeStmt = db.prepare('INSERT INTO time_entries (user_id, job_id, started_at, ended_at, notes, hourly_rate) VALUES (?, ?, ?, ?, ?, ?)');
-  const insertTime = { run: (u: number, job: number | null, start: string, end: string | null, notes: string | null) => timeStmt.run(u, job, start, end, notes, rates[u]) };
+  const timeStmt = db.prepare('INSERT INTO time_entries (user_id, job_id, started_at, ended_at, notes, hourly_rate, category) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  // General time gets a category from its note (travel vs. shop); job time has none.
+  const insertTime = {
+    run: (u: number, job: number | null, start: string, end: string | null, notes: string | null) =>
+      timeStmt.run(u, job, start, end, notes, rates[u], job ? null : /drive/i.test(notes ?? '') ? 'Travel' : /maintenance/i.test(notes ?? '') ? 'Equipment upkeep' : 'Shop work'),
+  };
   const crew: [string, string[]][] = [
     ['Marcus Reed', ['Water mitigation — burst supply line', 'Unit 4B mold remediation']],
     ['Dana Cruz', ['Water mitigation — burst supply line', 'Storm damage — roof leak into bedroom']],
@@ -545,10 +549,10 @@ function seedFieldData(db: DB, ids: { userIds: Record<string, number>; jobIds: R
   for (const [name, jobs] of crew) {
     for (let offset = -4; offset <= -1; offset++) {
       const u = userIds[name];
-      insertTime.run(u, null, at(offset, 7, 30), at(offset, 8, 5), 'Shop / load truck');
+      insertTime.run(u, null, at(offset, 7, 30), at(offset, 8, 5), 'Load truck');
       insertTime.run(u, jobIds[jobs[0]], at(offset, 8, 20), at(offset, 12, offset % 2 ? 10 : 40), null);
       insertTime.run(u, jobIds[jobs[1]], at(offset, 13, 0), at(offset, 15, 45 - offset * 5), null);
-      insertTime.run(u, null, at(offset, 15, 55), at(offset, 16, 30), 'Drive back / unload');
+      insertTime.run(u, null, at(offset, 15, 55), at(offset, 16, 30), 'Drive back, unload');
     }
   }
   // Single-visit jobs finished earlier.
@@ -566,11 +570,11 @@ function seedFieldData(db: DB, ids: { userIds: Record<string, number>; jobIds: R
     const p = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`;
   };
-  insertTime.run(userIds['Kim Nguyen'], null, ago(190), ago(165), 'Shop / pick up igniter');
+  insertTime.run(userIds['Kim Nguyen'], null, ago(190), ago(165), 'Picked up igniter');
   insertTime.run(userIds['Kim Nguyen'], jobIds['No heat — sanctuary RTU'], ago(160), null, null);
   insertTime.run(userIds['Dana Cruz'], null, ago(150), ago(130), 'Shop');
   insertTime.run(userIds['Dana Cruz'], jobIds['Water mitigation — burst supply line'], ago(125), null, null);
-  insertTime.run(userIds['Tony Ruiz'], null, ago(95), null, 'Shop / truck maintenance');
+  insertTime.run(userIds['Tony Ruiz'], null, ago(95), null, 'Truck maintenance');
 
   // End-of-day reports.
   const insertReport = db.prepare(

@@ -338,6 +338,8 @@ const ADDED_COLUMNS: [table: string, column: string, definition: string][] = [
   ['users', 'commission_rate', 'REAL NOT NULL DEFAULT 0'],
   // Staff sign-in: pbkdf2$iterations$salt$hash; null = no login yet.
   ['users', 'password_hash', 'TEXT'],
+  // General (non-job) time: Shop work, Travel, ...
+  ['time_entries', 'category', 'TEXT'],
 ];
 
 function migrate(db: DB) {

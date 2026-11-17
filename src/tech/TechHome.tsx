@@ -68,7 +68,7 @@ function JobCard({ job, active }: { job: Job; active: boolean }) {
           <MapPin size={14} /> {job.address}
         </div>
       )}
-      {active && <div className="mt-2 text-xs font-medium text-emerald-700">⏱ Timer running on this job</div>}
+      {active && <div className="mt-2 text-xs font-medium text-emerald-700">⏱ You're clocked in to this job</div>}
     </Link>
   );
 }

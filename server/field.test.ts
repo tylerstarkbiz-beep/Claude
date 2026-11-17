@@ -160,3 +160,50 @@ test('company branding: defaults to the logo and colors, validates changes, and 
   assert.equal(removed.data.logo, null);
   close();
 });
+
+test('clock in to shop time or a job; job time is job-costed, shop time is not', async () => {
+  const { call, userId, jobId, close } = await setup();
+  const chris = userId('Chris Walker');
+  const dana = userId('Dana Cruz');
+  const marcus = userId('Marcus Reed'); // manager: approves time
+  const pm = jobId('Quarterly PM — 6 rooftop units');
+  const other = jobId('Water mitigation — burst supply line'); // another crew's job, in progress
+
+  // What Chris can pick from: his jobs today, other jobs underway, and general time kinds.
+  const opts = (await call('GET', '/time/clock-options', undefined, undefined, chris)).data;
+  assert.ok(opts.categories.includes('Shop work') && opts.categories.includes('Travel'));
+  assert.ok(opts.otherJobs.some((j: { id: number }) => j.id === other), 'can help on another crew’s job');
+  assert.ok(opts.myJobs.every((j: { assigneeId: number }) => j.assigneeId === chris));
+
+  // Shop work first (no userId: defaults to the signed-in tech).
+  const shop = await call('POST', '/time/clock-in', { category: 'Shop work' }, undefined, chris);
+  assert.equal(shop.data.entry.userId, chris);
+  assert.equal(shop.data.entry.jobId, null);
+  assert.equal(shop.data.entry.category, 'Shop work');
+  // Switching kinds of general time starts a new entry.
+  const travel = await call('POST', '/time/clock-in', { category: 'Travel' }, undefined, chris);
+  assert.equal(travel.data.entry.category, 'Travel');
+  assert.notEqual(travel.data.entry.id, shop.data.entry.id);
+  // Then onto a job: the travel entry closes, the job entry opens with no category.
+  const onJob = await call('POST', '/time/clock-in', { jobId: other }, undefined, chris);
+  assert.equal(onJob.data.entry.jobId, other);
+  assert.equal(onJob.data.entry.category, null);
+  const status = (await call('GET', `/time/status/${chris}`, undefined, undefined, chris)).data;
+  assert.equal(status.entry.jobId, other);
+
+  // Job costing picks up Chris's (running) time on that job; shop and travel time don't land on any job.
+  const costing = (await call('GET', `/jobs/${other}/costing`)).data;
+  assert.ok(costing.labor.some((l: { userId: number }) => l.userId === chris), 'job labor includes the clocked-in tech');
+  await call('POST', '/time/clock-out', {}, undefined, chris);
+  const mine = (await call('GET', `/time?userId=${chris}`, undefined, undefined, chris)).data as { jobId: number | null; category: string | null; endedAt: string | null }[];
+  assert.ok(mine.every((e) => e.endedAt), 'clocked out');
+  assert.ok(mine.filter((e) => !e.jobId).every((e) => e.category), 'general time is labeled');
+
+  // Techs can't clock someone else in or out, or edit time by hand; managers who approve time can.
+  assert.equal((await call('POST', '/time/clock-in', { userId: dana, jobId: pm }, undefined, chris)).status, 403);
+  assert.equal((await call('POST', '/time/clock-out', { userId: dana }, undefined, chris)).status, 403);
+  assert.equal((await call('GET', `/time/status/${dana}`, undefined, undefined, chris)).status, 403);
+  assert.equal((await call('POST', '/time', { userId: chris, jobId: pm, startedAt: '2026-01-05T08:00:00', endedAt: '2026-01-05T18:00:00' }, undefined, chris)).status, 403);
+  assert.equal((await call('POST', '/time/clock-in', { userId: dana, jobId: pm }, undefined, marcus)).status, 200);
+  close();
+});

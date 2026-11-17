@@ -288,7 +288,7 @@ export interface DashboardStats {
   upcomingJobs: Job[];
   overdueTasks: Task[];
   recentActivity: ActivityEntry[];
-  onTheClock: { userId: number; jobId: number | null; startedAt: string }[];
+  onTheClock: { userId: number; jobId: number | null; category: string | null; startedAt: string }[];
 }
 
 // ---------- Time tracking ----------
@@ -305,7 +305,21 @@ export interface TimeEntry {
   startedAt: string;
   endedAt: string | null;
   notes: string | null;
+  /** For general (non-job) time: what kind, e.g. "Shop work". Null on job time. */
+  category: string | null;
   job?: { number: string; title: string; divisionId: number } | null;
+}
+
+/** Kinds of general time a tech can clock in to when they're not on a job. Not job-costed. */
+export const GENERAL_TIME_CATEGORIES = ['Shop work', 'Travel', 'Office / admin', 'Training', 'Equipment upkeep'] as const;
+
+/** What a tech can clock in to right now. */
+export interface ClockOptions {
+  /** Their own jobs scheduled today. */
+  myJobs: Job[];
+  /** Other jobs underway or scheduled today (helping another crew). */
+  otherJobs: Job[];
+  categories: string[];
 }
 
 // ---------- Job notes & photos ----------

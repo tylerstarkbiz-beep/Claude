@@ -601,12 +601,13 @@ export function createApi(db: DB): Router {
         .map((r) => ({ id: r.id as number, kind: r.kind as string, message: r.message as string, jobId: r.job_id as number | null, taskId: r.task_id as number | null, createdAt: r.created_at as string }));
 
       const onTheClock = (
-        db.prepare('SELECT user_id, job_id, started_at FROM time_entries WHERE ended_at IS NULL ORDER BY started_at').all() as {
+        db.prepare('SELECT user_id, job_id, category, started_at FROM time_entries WHERE ended_at IS NULL ORDER BY started_at').all() as {
           user_id: number;
           job_id: number | null;
+          category: string | null;
           started_at: string;
         }[]
-      ).map((r) => ({ userId: r.user_id, jobId: r.job_id, startedAt: r.started_at }));
+      ).map((r) => ({ userId: r.user_id, jobId: r.job_id, category: r.category, startedAt: r.started_at }));
 
       return { totals: tiles(divisionId), divisions: perDivision, jobsByStatus, upcomingJobs, overdueTasks, recentActivity, onTheClock };
     }),

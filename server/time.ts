@@ -5,7 +5,21 @@ import { h, id, optNum, patch, required } from './http.ts';
 import { setJobStatus } from './automations.ts';
 import { loadNotes } from './notes.ts';
 import { HttpError, JOB_SELECT, TASK_SELECT, getJob, localDate, localDateTime, mapJob, mapTask, mapUser } from './repo.ts';
-import type { ChecklistTemplate, DailyItem, DailyLog, DailyReport, DailySummary, TimeEntry, User } from '../shared/types.ts';
+import { GENERAL_TIME_CATEGORIES, userCan, type ChecklistTemplate, type ClockOptions, type DailyItem, type DailyLog, type DailyReport, type DailySummary, type TimeEntry, type User } from '../shared/types.ts';
+import { staffUser } from './auth.ts';
+import type { Request } from 'express';
+
+/** Techs clock only themselves in and out; people who approve time can act for anyone. Defaults to the signed-in person. */
+function clockTarget(db: DB, req: Request, raw: unknown): User {
+  const me = staffUser(req)!;
+  const userId = raw === undefined || raw === null || raw === '' ? me.id : Number(raw);
+  if (userId !== me.id && !userCan(me, 'approve_time')) throw new HttpError(403, 'You can only clock yourself in and out');
+  return getUser(db, userId);
+}
+
+const requireApprover = (req: Request) => {
+  if (!userCan(staffUser(req), 'approve_time')) throw new HttpError(403, 'Only managers who approve time can add or change time entries');
+};
 
 type Row = Record<string, any>;
 
@@ -20,6 +34,7 @@ const mapEntry = (r: Row): TimeEntry => ({
   startedAt: r.started_at,
   endedAt: r.ended_at,
   notes: r.notes,
+  category: r.category ?? null,
   job: r.job_number ? { number: r.job_number, title: r.job_title, divisionId: r.job_division_id } : null,
 });
 
@@ -150,29 +165,56 @@ export function createTimeApi(db: DB): Router {
   api.get(
     '/time/status/:userId',
     h((req) => {
-      const userId = id(req, 'userId');
+      const userId = clockTarget(db, req, id(req, 'userId')).id;
       const entry = openEntry(db, userId);
       const todayMinutes = entriesForDay(db, userId, localDate()).reduce((a, e) => a + entryMinutes(e), 0);
       return { entry, todayMinutes };
     }),
   );
 
-  /** Clock in, or switch what you're working on. Closes any open entry first. */
+  /** What the signed-in tech can clock in to: their jobs today, other jobs underway, and kinds of general time. */
+  api.get(
+    '/time/clock-options',
+    h((req): ClockOptions => {
+      const me = staffUser(req)!;
+      const today = localDate();
+      const jobs = db
+        .prepare(
+          `${JOB_SELECT} WHERE j.status NOT IN ('cancelled', 'paid', 'invoiced')
+             AND (substr(j.scheduled_start, 1, 10) = ? OR (j.status = 'in_progress'))
+           ORDER BY j.scheduled_start`,
+        )
+        .all(today)
+        .map(mapJob);
+      return {
+        myJobs: jobs.filter((j) => j.assigneeId === me.id),
+        otherJobs: jobs.filter((j) => j.assigneeId !== me.id),
+        categories: [...GENERAL_TIME_CATEGORIES],
+      };
+    }),
+  );
+
+  /**
+   * Clock in, or switch what you're working on: a job (its time is job-costed) or general time
+   * (shop work, travel...). Closes any open entry first, so there's never a gap or overlap.
+   */
   api.post(
     '/time/clock-in',
     h((req) => {
-      const user = getUser(db, Number(req.body.userId));
+      const user = clockTarget(db, req, req.body.userId);
       const jobId = optNum(req.body.jobId);
       const job = jobId ? getJob(db, jobId) : null;
       if (jobId && !job) throw new HttpError(400, 'Job not found');
+      if (job && ['cancelled'].includes(job.status)) throw new HttpError(400, 'That job was cancelled');
+      const category = jobId ? null : GENERAL_TIME_CATEGORIES.find((c) => c === req.body.category) ?? 'Shop work';
       return tx(db, () => {
         const now = localDateTime();
         const open = openEntry(db, user.id);
-        if (open && open.jobId === jobId) return { entry: open, automations: [] };
+        if (open && open.jobId === jobId && (jobId || open.category === category)) return { entry: open, automations: [] };
         if (open) db.prepare('UPDATE time_entries SET ended_at = ? WHERE id = ?').run(now, open.id);
         const r = db
-          .prepare('INSERT INTO time_entries (user_id, job_id, started_at, notes, hourly_rate) VALUES (?, ?, ?, ?, ?)')
-          .run(user.id, jobId, now, req.body.notes || null, user.hourlyRate);
+          .prepare('INSERT INTO time_entries (user_id, job_id, started_at, notes, hourly_rate, category) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(user.id, jobId, now, req.body.notes || null, user.hourlyRate, category);
         let automations: string[] = [];
         if (job) {
           logActivity(db, 'time', `${user.name} started work on ${job.number}`, { jobId: job.id });
@@ -188,7 +230,7 @@ export function createTimeApi(db: DB): Router {
   api.post(
     '/time/clock-out',
     h((req) => {
-      const userId = Number(req.body.userId);
+      const userId = clockTarget(db, req, req.body.userId).id;
       const open = openEntry(db, userId);
       if (open) db.prepare('UPDATE time_entries SET ended_at = ? WHERE id = ?').run(localDateTime(), open.id);
       return { entry: null };
@@ -218,13 +260,14 @@ export function createTimeApi(db: DB): Router {
   api.post(
     '/time',
     h((req) => {
+      requireApprover(req);
       const b = req.body;
       const startedAt = required(b, 'startedAt');
       if (b.endedAt && b.endedAt <= startedAt) throw new HttpError(400, 'End must be after start');
       const user = getUser(db, Number(b.userId));
       const r = db
-        .prepare('INSERT INTO time_entries (user_id, job_id, started_at, ended_at, notes, hourly_rate) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(user.id, optNum(b.jobId), startedAt, b.endedAt || null, b.notes || null, user.hourlyRate);
+        .prepare('INSERT INTO time_entries (user_id, job_id, started_at, ended_at, notes, hourly_rate, category) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(user.id, optNum(b.jobId), startedAt, b.endedAt || null, b.notes || null, user.hourlyRate, optNum(b.jobId) ? null : (GENERAL_TIME_CATEGORIES.find((c) => c === b.category) ?? 'Shop work'));
       return mapEntry(db.prepare(`${TIME_SELECT} WHERE te.id = ?`).get(r.lastInsertRowid)!);
     }),
   );
@@ -232,6 +275,7 @@ export function createTimeApi(db: DB): Router {
   api.patch(
     '/time/:id',
     h((req) => {
+      requireApprover(req);
       patch(db, 'time_entries', id(req), req.body, {
         startedAt: 'started_at',
         endedAt: 'ended_at',
@@ -249,6 +293,7 @@ export function createTimeApi(db: DB): Router {
   api.delete(
     '/time/:id',
     h((req) => {
+      requireApprover(req);
       db.prepare('DELETE FROM time_entries WHERE id = ?').run(id(req));
     }),
   );
