@@ -3,28 +3,20 @@
 import { Router, type Request } from 'express';
 import type { DB } from './db.ts';
 import { h, id, optNum } from './http.ts';
-import { HttpError, getJob, localDate, localDateTime, mapUser } from './repo.ts';
+import { staffUser } from './auth.ts';
+import { HttpError, getJob, localDate, localDateTime } from './repo.ts';
 import { userCan, type Earning, type EarningKind, type EarningTotals, type EarningsSummary, type TeamEarningsRow, type User } from '../shared/types.ts';
 
 type Row = Record<string, any>;
 const cents = (n: number) => Math.round(n * 100) / 100;
 const MONTH = /^\d{4}-\d{2}$/;
 
-/**
- * Who is making the request. Until staff sign-in exists this is the "Viewing as" person, sent as x-user-id;
- * when logins land, swap this for the signed-in session and every check below keeps working.
- */
-export function actingUser(db: DB, req: Request): User | undefined {
-  const raw = req.get('x-user-id');
-  const userId = raw ? Number(raw) : NaN;
-  if (!Number.isInteger(userId)) return undefined;
-  const row = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1').get(userId);
-  return row ? mapUser(row) : undefined;
-}
+/** Who is making the request: the signed-in staff member. */
+export const actingUser = (_db: DB, req: Request): User | undefined => staffUser(req);
 
 function requireActor(db: DB, req: Request): User {
   const me = actingUser(db, req);
-  if (!me) throw new HttpError(401, 'Choose who you are first');
+  if (!me) throw new HttpError(401, 'Please sign in');
   return me;
 }
 

@@ -38,6 +38,8 @@ export interface User {
   permissions: Permission[];
   /** Inactive members keep their history but drop out of pickers and schedules. */
   active: boolean;
+  /** Has a password set, so they can sign in. */
+  hasLogin: boolean;
 }
 
 // ---------- Permissions ----------

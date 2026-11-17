@@ -52,6 +52,7 @@ export function createApi(db: DB): Router {
         .map((r) => visibleUser(actingUser(db, req), mapUser(r))),
       boards: db.prepare('SELECT * FROM boards ORDER BY division_id IS NULL, division_id, name').all().map(mapBoard),
       company: getCompany(db),
+      me: actingUser(db, req) ?? null,
     })),
   );
 

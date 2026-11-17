@@ -84,7 +84,9 @@ test('revenue this month follows completion date, not last edit', async () => {
 
 test('team: rates and permissions validated; the last team manager cannot be removed', async () => {
   const { call, userId, close } = await setup();
-  const alex = userId('Alex Morgan'); // the only member with manage_team
+  const alex = userId('Alex Morgan');
+  // Make Alex the only member who can manage the team.
+  assert.equal((await call('PATCH', `/users/${userId('Office Admin')}`, { permissions: ['view_financials'] })).status, 200);
   assert.equal((await call('PATCH', `/users/${alex}`, { hourlyRate: -5 })).status, 400);
   assert.equal((await call('PATCH', `/users/${alex}`, { email: 'kim@example.com' })).status, 409);
   assert.equal((await call('PATCH', `/users/${alex}`, { permissions: ['view_financials'] })).status, 409);

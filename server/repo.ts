@@ -39,6 +39,7 @@ export const mapUser = (r: Row): User => ({
   commissionRate: r.commission_rate ?? 0,
   permissions: JSON.parse(r.permissions ?? '[]'),
   active: r.active == null ? true : !!r.active,
+  hasLogin: !!r.password_hash,
 });
 
 export const mapClient = (r: Row): Client => ({

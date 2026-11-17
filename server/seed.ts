@@ -1,7 +1,11 @@
 // Demo data so the app is useful on first launch. Run `npm run seed` to reset.
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { hashPassword } from './auth.ts';
 import { openDb, tx, type DB } from './db.ts';
+/** Password for every demo account. Change these (Team page) before using the app for real. */
+export const DEMO_PASSWORD = 'BigCountry2026';
+
 import { ROLE_DEFAULTS, type AutomationAction, type AutomationTrigger, type FieldDef, type Role } from '../shared/types.ts';
 
 const DIVISIONS: { name: string; slug: string; prefix: string; color: string; icon: string; fields: FieldDef[] }[] = [
@@ -64,6 +68,7 @@ const DIVISIONS: { name: string; slug: string; prefix: string; color: string; ic
 
 // [name, email, role, color, division slugs, loaded hourly cost, commission %]
 const USERS: [string, string, Role, string, string[], number, number][] = [
+  ['Office Admin', 'admin@example.com', 'owner', '#184478', ['restoration', 'junk-removal', 'janitorial', 'hvac'], 0, 0],
   ['Alex Morgan', 'alex@example.com', 'owner', '#401694', ['restoration', 'junk-removal', 'janitorial', 'hvac'], 45, 0],
   ['Jordan Lee', 'jordan@example.com', 'office', '#a25ddc', ['restoration', 'junk-removal', 'janitorial', 'hvac'], 26, 0],
   ['Marcus Reed', 'marcus@example.com', 'manager', '#e2445c', ['restoration'], 38, 3],
@@ -349,6 +354,8 @@ export function seed(db: DB) {
         );
       userIds[name] = Number(r.lastInsertRowid);
     });
+    // Demo sign-ins: every demo account uses DEMO_PASSWORD (hashed once and reused, since this is throwaway demo data).
+    db.prepare('UPDATE users SET password_hash = ?').run(hashPassword(DEMO_PASSWORD));
 
     const clientIds = CLIENTS.map(([name, company, email, phone, address]) =>
       Number(
@@ -695,6 +702,7 @@ export function seedIfEmpty(db: DB) {
 }
 
 const TABLES = [
+  'staff_sessions',
   'earnings',
   'job_costs',
   'settings',

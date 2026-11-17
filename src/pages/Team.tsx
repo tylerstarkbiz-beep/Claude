@@ -15,7 +15,7 @@ const ROLES: { value: Role; label: string }[] = [
 ];
 const COLORS = ['#579bfc', '#00c875', '#fdab3d', '#e2445c', '#a25ddc', '#0086c0', '#ff7575', '#401694', '#037f4c', '#bb3354'];
 
-type Draft = Omit<User, 'id'> & { id?: number };
+type Draft = Omit<User, 'id'> & { id?: number; password?: string };
 
 const blank = (): Draft => ({
   name: '',
@@ -26,6 +26,8 @@ const blank = (): Draft => ({
   divisionIds: [],
   hourlyRate: 0,
   commissionRate: 0,
+  hasLogin: false,
+  password: '',
   permissions: [...ROLE_DEFAULTS.technician],
   active: true,
 });
@@ -71,6 +73,7 @@ export function Team() {
                     <div>
                       <div className="font-medium">
                         {u.name} {!u.active && <span className="text-xs font-normal text-slate-500">(inactive)</span>}
+                        {u.active && !u.hasLogin && <span className="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-normal text-amber-700">No login</span>}
                       </div>
                       <div className="text-xs text-slate-500">
                         {u.email}
@@ -144,7 +147,8 @@ function MemberDrawer({ member, onClose }: { member: Draft; onClose: () => void 
     e.preventDefault();
     setSaving(true);
     try {
-      const body = { ...d, hourlyRate: Number(d.hourlyRate) || 0, commissionRate: Number(d.commissionRate) || 0 };
+      const { password, hasLogin: _ignored, ...rest } = d;
+      const body = { ...rest, hourlyRate: Number(rest.hourlyRate) || 0, commissionRate: Number(rest.commissionRate) || 0, ...(password ? { password } : {}) };
       if (isNew) await post('/users', body);
       else await patch(`/users/${member.id}`, body);
       await app.reload();
@@ -204,6 +208,22 @@ function MemberDrawer({ member, onClose }: { member: Draft; onClose: () => void 
                 onChange={(e) => set('commissionRate', e.target.value as unknown as number)}
               />
               <span className="mt-1 block text-xs text-slate-500">Pre-fills commissions logged on this person's jobs. Only they and admins see it.</span>
+            </label>
+            <label>
+              <span className="label">{d.hasLogin ? 'New password' : 'Password (lets them sign in)'}</span>
+              <input
+                id="member-password"
+                className="input"
+                type="text"
+                autoComplete="new-password"
+                minLength={8}
+                placeholder={d.hasLogin ? 'Leave blank to keep their current password' : 'At least 8 characters'}
+                value={d.password ?? ''}
+                onChange={(e) => set('password', e.target.value)}
+              />
+              <span className="mt-1 block text-xs text-slate-500">
+                {d.hasLogin ? 'Setting a new one signs them out on every device.' : 'Share it with them privately. They sign in with their email and this password.'}
+              </span>
             </label>
           </div>
 

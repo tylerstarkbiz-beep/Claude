@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import {
   CalendarDays,
+  LogOut,
   HandCoins,
   CircleUserRound,
   Clock,
@@ -153,21 +154,13 @@ export function Layout() {
               );
             })}
           </div>
-          <label className="flex shrink-0 items-center gap-2 text-sm text-slate-500">
+          <div className="flex shrink-0 items-center gap-2 text-sm">
             <Avatar user={me} size={28} />
-            <select
-              className="hidden bg-transparent text-slate-700 outline-none sm:block"
-              value={app.currentUserId ?? ''}
-              onChange={(e) => app.setCurrentUserId(Number(e.target.value))}
-              title="Viewing as"
-            >
-              {app.activeUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </select>
-          </label>
+            <span className="hidden font-medium text-slate-700 sm:inline">{me?.name}</span>
+            <button onClick={app.signOut} className="flex items-center gap-1 rounded-md px-2 py-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="Sign out">
+              <LogOut size={16} /> <span className="hidden md:inline">Sign out</span>
+            </button>
+          </div>
         </header>
         <main className="min-w-0 flex-1 overflow-auto p-4 sm:p-6">
           <Outlet />

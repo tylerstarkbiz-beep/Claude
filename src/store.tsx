@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { api, setActingUser } from './api';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { api, getStaffSession, setStaffSession, SIGNED_OUT_EVENT } from './api';
+import { Login } from './pages/Login';
 import { userCan, type Board, type CompanySettings, type Division, type Permission, type User } from '../shared/types';
 import { DEFAULT_BRAND, DEFAULT_LOGO, DEFAULT_MARK } from '../shared/brand';
 import { applyBrand } from './brand';
@@ -25,9 +26,9 @@ interface AppState {
   /** Global division filter; null means "All divisions". */
   divisionId: number | null;
   setDivisionId: (id: number | null) => void;
-  /** Who is using the app (stand-in until real auth). */
+  /** The signed-in staff member. */
   currentUserId: number | null;
-  setCurrentUserId: (id: number) => void;
+  signOut: () => void;
   division: (id: number | null | undefined) => Division | undefined;
   user: (id: number | null | undefined) => User | undefined;
   toast: (message: string, kind?: Toast['kind']) => void;
@@ -81,39 +82,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [company, setCompany] = useState<CompanySettings | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [divisionId, setDivisionIdState] = useState<number | null>(() => stored('fb.division'));
-  const [currentUserId, setCurrentUserIdState] = useState<number | null>(() => {
-    const id = stored('fb.user');
-    setActingUser(id);
-    return id;
-  });
-  // Who /bootstrap was loaded as; it hides other people's pay rates, so reload when that changes.
-  const [loadedAs, setLoadedAs] = useState<number | null | undefined>(undefined);
+  // The signed-in staff member (from /bootstrap); null until signed in.
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [signedIn, setSignedIn] = useState(() => !!getStaffSession());
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const currentUserRef = useRef(currentUserId);
 
   const reload = useCallback(async () => {
-    const as = currentUserRef.current;
-    setActingUser(as);
-    const data = await api<{ divisions: Division[]; users: User[]; boards: Board[]; company: CompanySettings }>('/bootstrap');
-    setLoadedAs(as);
+    const data = await api<{ divisions: Division[]; users: User[]; boards: Board[]; company: CompanySettings; me: User | null }>('/bootstrap');
     setCompany(data.company);
     setDivisions(data.divisions);
     setUsers(data.users);
     setBoards(data.boards);
+    setCurrentUserId(data.me?.id ?? null);
     setLoaded(true);
-    setCurrentUserIdState((cur) => (cur && data.users.some((u) => u.id === cur && u.active) ? cur : (data.users.find((u) => u.active)?.id ?? null)));
     setDivisionIdState((cur) => (cur && data.divisions.some((d) => d.id === cur) ? cur : null));
   }, []);
 
   useEffect(() => {
-    currentUserRef.current = currentUserId;
-    setActingUser(currentUserId);
-    if (loadedAs !== undefined && loadedAs !== currentUserId) reload();
-  }, [currentUserId, loadedAs, reload]);
+    if (signedIn) reload().catch(() => undefined);
+  }, [signedIn, reload]);
 
+  // Session expired or revoked (e.g. password reset): back to the sign-in page.
   useEffect(() => {
-    reload();
-  }, [reload]);
+    const out = () => {
+      setSignedIn(false);
+      setLoaded(false);
+      setCurrentUserId(null);
+    };
+    window.addEventListener(SIGNED_OUT_EVENT, out);
+    return () => window.removeEventListener(SIGNED_OUT_EVENT, out);
+  }, []);
+
+  const signOut = useCallback(() => {
+    api('/auth/logout', { method: 'POST' }).catch(() => undefined);
+    setStaffSession(null);
+    window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
+  }, []);
 
   // Apply the company's colors to the whole UI (the brand-* / accent-* palettes read these) and name the tab.
   useEffect(() => {
@@ -138,14 +142,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       divisionId,
       setDivisionId: (id) => (setDivisionIdState(id), store('fb.division', id)),
       currentUserId,
-      setCurrentUserId: (id) => (setCurrentUserIdState(id), store('fb.user', id)),
+      signOut,
       division: (id) => divisions.find((d) => d.id === id),
       user: (id) => users.find((u) => u.id === id),
       toast,
       announce: (result) => result.automations?.forEach((m) => toast(m, 'automation')),
     }),
-    [company, divisions, users, boards, reload, divisionId, currentUserId, toast],
+    [company, divisions, users, boards, reload, divisionId, currentUserId, toast, signOut],
   );
+
+  if (!signedIn) return <Login onSignedIn={() => setSignedIn(true)} />;
 
   if (!loaded)
     return (

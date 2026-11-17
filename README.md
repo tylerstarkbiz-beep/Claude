@@ -15,7 +15,7 @@ FieldBoard puts both in one app and connects them with automations. It is built 
 | **Dashboard** | Company-wide or per-division numbers: open jobs, today's schedule, revenue this month (jobs *completed* this month), unpaid invoices, and open and overdue tasks. **Click any number** (the top tiles or a division card's rows) to see the jobs or tasks behind it; the revenue list includes each job's cost, profit and margin. Also shows who's on the clock, the pipeline, upcoming jobs and an activity feed. |
 | **Team** | Add and edit members, including role, divisions, phone, and **loaded hourly cost** (wage plus payroll taxes, workers' comp, benefits). **Permissions** are pre-filled from the role and adjustable per person: see financials, invoice & collect, manage jobs, approve time & logs, manage team, company settings, commissions & tips. Members who leave are marked inactive, so their history stays. |
 | **Job costing** | Every job shows revenue (line items) against **labor**, which is tracked time × each person's hourly cost. The rate is saved on each time entry, so a raise doesn't rewrite past jobs. **Materials & other costs** are entered by category (materials, equipment rental, subcontractor, dump fees, permits, fuel). The result is profit and margin. **Profitability** reports by job and division for this month, last month, 90 days, the year or all time, optionally including jobs still in progress. |
-| **Commissions & tips** | Every tech has a private **earnings tracker** (office: *Commissions & Tips*; tech app: *My Pay*). It shows what they've earned this month on top of hourly pay, split into commissions and tips, plus what's still owed and a six-month trend. Commissions and tips are added from a job (commissions pre-fill from the tech's **commission %**, set on the Team page), **only by people with the *Commissions & tips* permission**, once the money is verified as paid out from the job. Techs can't add, edit or remove anything on their own tracker; it's read-only for them. **Each person sees only their own tracker.** Owners and admins see the whole team and can mark earnings paid out after payroll. The server checks every earnings request against who is asking, and other people's pay rates aren't sent to techs' screens. Commissions count as a job cost in job costing and profitability. Tips don't, since the customer pays them. |
+| **Commissions & tips** | Every tech has a private **earnings tracker** (office: *Commissions & Tips*; tech app: *My Pay*). It shows what they've earned this month on top of hourly pay, split into commissions and tips, plus what's still owed and a six-month trend. Commissions and tips are added from a job (commissions pre-fill from the tech's **commission %**, set on the Team page), **only by people with the *Commissions & tips* permission**, once the money is verified as paid out from the job. Techs can't add, edit or remove anything on their own tracker; it's read-only for them. **Each person sees only their own tracker.** Owners and admins see the whole team and can mark earnings paid out after payroll. The server checks every earnings request against the signed-in person, and other people's pay rates aren't sent to techs' screens. Commissions count as a job cost in job costing and profitability. Tips don't, since the customer pays them. |
 | **Jobs** | Drag-and-drop pipeline (Request → Quoted → Scheduled → In Progress → Completed → Invoiced → Paid) plus a list view. The job page covers the client, schedule, assigned tech, division fields, editable line items with totals, linked tasks and activity. |
 | **Schedule** | **Day, week and month** views. Day is a dispatch board with a column per tech plus Unassigned; week is seven days by hour; month is a calendar. **Drag a job** to change its day and time (15-minute steps, length kept). In day view, drag it into another tech's column to reassign it, and drag its bottom edge to change the end time. Drag jobs from the **Needs scheduling** tray onto the calendar to book them. Crew chips filter the calendar. Rescheduling needs the *Manage jobs* permission. |
 | **Clients** | One customer record shared by all divisions, with cross-division job history and lifetime revenue. |
@@ -63,6 +63,24 @@ npm run seed       # wipe the database and reload demo data
 npm run build:demo # one self-contained HTML file (app + sample data, runs in the browser) in dist-demo/
 ```
 
+### Signing in
+
+Staff sign in with their email and password. Sessions last 30 days, and **Sign out** is in the top bar. After 8 wrong
+passwords, an email is locked for 15 minutes. Passwords are stored only as salted PBKDF2 hashes.
+
+The demo data includes these accounts, all with the password **`BigCountry2026`**:
+
+| Account | Email | Access |
+| --- | --- | --- |
+| Office Admin | `admin@example.com` | Full access (owner) |
+| Alex Morgan | `alex@example.com` | Full access (owner) |
+| Tony Ruiz | `tony@example.com` | Technician |
+| Jordan Lee | `jordan@example.com` | Office staff |
+
+Every other demo team member uses the same password. **Before real use**, give each person their own password on the
+**Team** page; the Password field there sets or resets it and signs them out everywhere. Members with no password show
+a *No login* tag. Deactivating someone signs them out immediately.
+
 ### Connecting outside services
 
 These are all optional. Until each is connected, the app still works: messages wait in **Settings → Messages outbox**
@@ -91,6 +109,7 @@ server/notes.ts        Job notes + photo uploads (stored in data/uploads)
 server/invoices.ts     Invoices, payments, client links, company settings
 server/team.ts         Team members, hourly rates, permissions
 server/costing.ts      Job costing and the profitability report
+server/auth.ts         Staff sign-in: password hashing, sessions, the sign-in check on every office request
 server/earnings.ts     Commissions & tips: private per-person trackers, logging rules, payouts
 server/portal.ts       Customer portal: sign-in links, sessions, client-scoped data, signatures
 server/texting.ts      Text wording, office texts, and the reminder / follow-up scheduler
@@ -114,9 +133,10 @@ and it launches full-screen like a native app. Until logins exist, techs pick th
 This is a working MVP. Before running the business on it, these are the next things to build, roughly in priority
 order:
 
-1. **Authentication.** Right now the "Viewing as" menu stands in for login. Most permissions are applied only in the
-   screens. Commissions & tips are checked on the server, but against the "Viewing as" person, which anyone can change,
-   so that rule is only airtight once there are real logins. Photo and invoice links are also unauthenticated.
+1. **Finish access control.** Staff sign-in is in place, and every office request requires it. The server enforces
+   commissions & tips and team management (adding members, rates, passwords). Other permissions (financials, invoicing,
+   job edits, settings) are still applied only in the screens, so the next step is checking each of them on the server too.
+   Also: password reset by email, and protecting job photo links (currently anyone with the link can open a photo).
 2. **Hosting.** Run it on a server with HTTPS (needed for phone installs and camera access), backups, and Postgres plus
    cloud photo storage once multiple offices use it.
 3. **Connect Twilio, SendGrid and Stripe** (see above) and test each with real accounts. The payment code is tested

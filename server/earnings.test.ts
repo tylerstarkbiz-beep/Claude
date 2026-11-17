@@ -12,7 +12,7 @@ test('each tech sees only their own tracker; pay managers see everyone', async (
   const owner = userId('Alex Morgan');
   const office = userId('Jordan Lee');
 
-  assert.equal((await call('GET', '/earnings')).status, 401, 'no acting user');
+  assert.equal((await call('GET', '/earnings', undefined, undefined, null)).status, 401, 'not signed in');
 
   const mine = await call('GET', '/earnings', undefined, undefined, tony);
   assert.equal(mine.status, 200);

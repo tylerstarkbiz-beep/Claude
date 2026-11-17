@@ -1,4 +1,4 @@
-// Just enough of Express's Router for the API modules: method routes with :params, next(), next(err).
+// Just enough of Express's Router for the API modules: method routes with :params, use(middleware), next(), next(err).
 type Handler = (req: any, res: any, next: (err?: unknown) => void) => void;
 export interface Route {
   method: string;
@@ -14,7 +14,9 @@ export function Router() {
     const re = new RegExp('^' + path.replace(/:(\w+)/g, (_, k) => (keys.push(k), '([^/]+)')) + '$');
     for (const handler of handlers) routes.push({ method, re, keys, handler });
   };
-  return { routes, get: add('GET'), post: add('POST'), patch: add('PATCH'), put: add('PUT'), delete: add('DELETE') };
+  // Middleware runs for every method and path, in registration order (like the server's sign-in check).
+  const use = (handler: Handler) => routes.push({ method: '*', re: /^/, keys: [], handler });
+  return { routes, use, get: add('GET'), post: add('POST'), patch: add('PATCH'), put: add('PUT'), delete: add('DELETE') };
 }
 
 export type DemoRouter = ReturnType<typeof Router>;

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { openDb } from './db.ts';
 import { seed } from './seed.ts';
 import { createApp } from './index.ts';
+import { createStaffSession, SESSION_HEADER } from './auth.ts';
 import type { Payments } from './stripe.ts';
 
 /** Start the app on a random port against a fresh seeded in-memory database. */
@@ -15,14 +16,18 @@ export async function setup(opts: { payments?: Payments } = {}) {
   const server = createApp(db, { uploadDir, payments: opts.payments ?? { enabled: false, publishableKey: null, call: async () => { throw new Error('Stripe not configured in tests'); } } }).listen(0);
   server.unref(); // a failed assertion that skips close() must not hang the test run
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  /** `as` sends the acting staff member (x-user-id), standing in for a staff login. */
-  const call = async (method: string, path: string, body?: unknown, token?: string, as?: number) => {
+  const sessions = new Map<number, string>();
+  const sessionFor = (userId: number) => sessions.get(userId) ?? (sessions.set(userId, createStaffSession(db, userId)), sessions.get(userId)!);
+  const ownerId = (db.prepare("SELECT id FROM users WHERE name = 'Alex Morgan'").get() as { id: number }).id;
+  /** Calls are signed in as the owner unless `as` names another staff member; `as: null` sends no staff sign-in. */
+  const call = async (method: string, path: string, body?: unknown, token?: string, as?: number | null) => {
+    const staff = as === null ? null : sessionFor(as ?? ownerId);
     const res = await fetch(origin + '/api' + path, {
       method,
       headers: {
         'content-type': 'application/json',
         ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...(as ? { 'x-user-id': String(as) } : {}),
+        ...(staff ? { [SESSION_HEADER]: staff } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
     });

@@ -1,8 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import clsx from 'clsx';
-import { ClipboardCheck, HandCoins, LayoutDashboard, Wrench } from 'lucide-react';
+import { ClipboardCheck, HandCoins, LayoutDashboard, LogOut, Wrench } from 'lucide-react';
 import { logoMark, useApp } from '../store';
-import { Avatar } from '../components/ui';
 
 /** Phone layout for field techs: a slim header and bottom tabs sized for thumbs. */
 export function TechShell() {
@@ -17,21 +16,13 @@ export function TechShell() {
       >
         {mark && <img src={mark} alt={app.company.name} className="h-10 w-10 shrink-0 rounded-full bg-white object-contain p-0.5" />}
         <div className="min-w-0 flex-1">
-          <select
-            className="w-full truncate bg-transparent font-semibold outline-none"
-            value={app.currentUserId ?? ''}
-            onChange={(e) => app.setCurrentUserId(Number(e.target.value))}
-            aria-label="Signed in as"
-          >
-            {app.activeUsers.map((u) => (
-              <option key={u.id} value={u.id} className="text-slate-900">
-                {u.name}
-              </option>
-            ))}
-          </select>
+          <div className="truncate font-semibold">{me?.name}</div>
           <div className="text-xs text-brand-200">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
         </div>
-        <Avatar user={me} size={34} />
+        <button onClick={app.signOut} className="flex flex-col items-center text-[11px] text-brand-100 hover:text-white" aria-label="Sign out">
+          <LogOut size={20} />
+          Sign out
+        </button>
       </header>
 
       <main className="flex-1 overflow-auto px-4 py-4 pb-24">

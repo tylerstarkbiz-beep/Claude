@@ -5,6 +5,12 @@ import { dirname } from 'node:path';
 export type DB = DatabaseSync;
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS staff_sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS earnings (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -330,6 +336,8 @@ const ADDED_COLUMNS: [table: string, column: string, definition: string][] = [
   ['invoices', 'kind', "TEXT NOT NULL DEFAULT 'standard'"],
   // Default commission % of the job total.
   ['users', 'commission_rate', 'REAL NOT NULL DEFAULT 0'],
+  // Staff sign-in: pbkdf2$iterations$salt$hash; null = no login yet.
+  ['users', 'password_hash', 'TEXT'],
 ];
 
 function migrate(db: DB) {

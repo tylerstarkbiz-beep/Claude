@@ -2,21 +2,42 @@ import { useCallback, useEffect, useState } from 'react';
 
 export class ApiError extends Error {}
 
-// Who is using the app, sent with every request so the server can check what they may see
-// (until staff sign-in replaces it with a session).
-let actingUserId: number | null = null;
-export const setActingUser = (id: number | null) => void (actingUserId = id);
+// Staff sign-in token, sent with every request. Kept in memory too, in case storage is unavailable.
+const SESSION_KEY = 'fb.session';
+let session: string | null = (() => {
+  try {
+    return localStorage.getItem(SESSION_KEY);
+  } catch {
+    return null;
+  }
+})();
+export const getStaffSession = () => session;
+export function setStaffSession(token: string | null) {
+  session = token;
+  try {
+    if (token) localStorage.setItem(SESSION_KEY, token);
+    else localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // Private mode: stays signed in for this tab only.
+  }
+}
+/** Fired when the server says the session is missing or expired, so the app can show the sign-in page. */
+export const SIGNED_OUT_EVENT = 'fb:signed-out';
 
 export async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   const headers: Record<string, string> = {};
   if (init?.body !== undefined) headers['content-type'] = 'application/json';
-  if (actingUserId != null) headers['x-user-id'] = String(actingUserId);
+  if (session) headers['x-staff-session'] = session;
   const res = await fetch(`/api${path}`, {
     method: init?.method ?? 'GET',
     headers,
     body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && path !== '/auth/login' && !path.startsWith('/auth/password')) {
+    setStaffSession(null);
+    window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
+  }
   if (!res.ok) throw new ApiError(data.error ?? `Request failed (${res.status})`);
   return data as T;
 }

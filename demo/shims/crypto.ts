@@ -1,4 +1,4 @@
-// The two node:crypto functions the server uses, for the in-browser demo.
+// The node:crypto functions the server uses, for the in-browser demo.
 const b64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const hex = (bytes: Uint8Array) => [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 
@@ -39,7 +39,14 @@ function sha256(msg: Uint8Array): Uint8Array {
     for (let i = 0; i < 64; i++) {
       const t1 = (h + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + W[i]) >>> 0;
       const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0;
-      [h, g, f, e, d, c, b, a] = [g, f, e, (d + t1) >>> 0, c, b, a, (t1 + t2) >>> 0];
+      h = g;
+      g = f;
+      f = e;
+      e = (d + t1) >>> 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (t1 + t2) >>> 0;
     }
     H[0] += a; H[1] += b; H[2] += c; H[3] += d; H[4] += e; H[5] += f; H[6] += g; H[7] += h;
   }
@@ -62,4 +69,74 @@ export function createHash(alg: string) {
   return api;
 }
 
-export default { randomBytes, createHash };
+// One SHA-256 compression of a 16-word block into state (in place). Used by the fast PBKDF2 loop.
+const W64 = new Uint32Array(64);
+function compress(state: Uint32Array, block: Uint32Array) {
+  const W = W64;
+  for (let i = 0; i < 16; i++) W[i] = block[i];
+  for (let i = 16; i < 64; i++) {
+    const x = W[i - 15], y = W[i - 2];
+    const s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);
+    const s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);
+    W[i] = (W[i - 16] + s0 + W[i - 7] + s1) | 0;
+  }
+  let a = state[0], b = state[1], c = state[2], d = state[3], e = state[4], f = state[5], g = state[6], h = state[7];
+  for (let i = 0; i < 64; i++) {
+    const t1 = (h + (((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7))) + ((e & f) ^ (~e & g)) + K[i] + W[i]) | 0;
+    const t2 = ((((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10))) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+    h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+  }
+  state[0] += a; state[1] += b; state[2] += c; state[3] += d; state[4] += e; state[5] += f; state[6] += g; state[7] += h;
+}
+
+const IV = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+const words = (bytes: Uint8Array) => {
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return Uint32Array.from({ length: bytes.length / 4 }, (_, i) => v.getUint32(i * 4));
+};
+
+/** PBKDF2-HMAC-SHA256 (staff passwords), same output as Node's pbkdf2Sync. */
+export function pbkdf2Sync(password: string, salt: string, iterations: number, keylen: number, digest: string) {
+  if (digest !== 'sha256' || keylen > 32) throw new Error('Unsupported pbkdf2 parameters');
+  let key: Uint8Array = new TextEncoder().encode(password);
+  if (key.length > 64) key = sha256(key);
+  const pad = (x: number) => new Uint8Array(64).map((_, i) => (key[i] ?? 0) ^ x);
+  const ipad = pad(0x36), opad = pad(0x5c);
+  // States after absorbing the padded key, reused for every iteration.
+  const inner0 = Uint32Array.from(IV), outer0 = Uint32Array.from(IV);
+  compress(inner0, words(ipad));
+  compress(outer0, words(opad));
+
+  // First block: HMAC(salt || INT(1)) the slow way.
+  const saltBytes = new TextEncoder().encode(salt);
+  const msg = new Uint8Array(saltBytes.length + 4);
+  msg.set(saltBytes);
+  msg[msg.length - 1] = 1;
+  const first = sha256(new Uint8Array([...opad, ...sha256(new Uint8Array([...ipad, ...msg]))]));
+  const u = words(first);
+  const t = u.slice();
+
+  // Later iterations hash a fixed 32-byte message: one padded block each for the inner and outer hash.
+  const block = new Uint32Array(16);
+  block[8] = 0x80000000;
+  block[15] = (64 + 32) * 8;
+  const st = new Uint32Array(8);
+  for (let n = 1; n < iterations; n++) {
+    block.set(u);
+    st.set(inner0);
+    compress(st, block);
+    block.set(st);
+    st.set(outer0);
+    compress(st, block);
+    for (let j = 0; j < 8; j++) {
+      u[j] = st[j];
+      t[j] ^= st[j];
+    }
+  }
+  const out = new Uint8Array(32);
+  const ov = new DataView(out.buffer);
+  t.forEach((v, i) => ov.setUint32(i * 4, v));
+  return { toString: (_enc: 'hex') => hex(out.slice(0, keylen)) };
+}
+
+export default { randomBytes, createHash, pbkdf2Sync };
